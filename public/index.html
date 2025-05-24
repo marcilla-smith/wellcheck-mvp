@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WellCheck - Daily Wellness Check-in</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f0f2f5;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+        }
+        
+        .phone-container {
+            max-width: 400px;
+            width: 100%;
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+        }
+        
+        .screen {
+            padding: 20px;
+            min-height: 600px;
+            display: none;
+        }
+        
+        .screen.active {
+            display: block;
+        }
+        
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            color: #333;
+            margin: 0;
+        }
+        
+        .header p {
+            color: #666;
+            margin: 10px 0 0 0;
+            font-size: 16px;
+        }
+        
+        /* Login Styles */
+        .login-form {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .form-group input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            box-sizing: border-box;
+        }
+        
+        .auth-buttons {
+            display: flex;
+            gap: 10px;
+        }
+        
+        .auth-button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .primary-button {
+            background: #5a4fcf;
+            color: white;
+        }
+        
+        .secondary-button {
+            background: #e9ecef;
+            color: #333;
+        }
+        
+        .auth-button:hover {
+            transform: translateY(-2px);
+        }
+        
+        /* Check-in Styles */
+        .dimension-grid {
+            display: grid;
+            gap: 15px;
+            margin-bottom: 30px;
+        }
+        
+        .dimension-item {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        .dimension-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        
+        .dimension-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .dimension-icon {
+            font-size: 24px;
+        }
+        
+        .rating-container {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .rating-button {
+            width: 40px;
+            height: 40px;
+            border: 2px solid #ddd;
+            background: white;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-weight: 600;
+            color: #666;
+        }
+        
+        .rating-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 3px 10px rgba(0,0,0,0.1);
+        }
+        
+        .rating-button.selected {
+            background: #5a4fcf;
+            color: white;
+            border-color: #5a4fcf;
+        }
+        
+        .rating-button.low {
+            background: #ff6b6b;
+            color: white;
+            border-color: #ff6b6b;
+        }
+        
+        .submit-button {
+            width: 100%;
+            padding: 18px;
+            background: #5a4fcf;
+            color: white;
+            border: none;
+            border-radius: 15px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        
+        .submit-button:hover {
+            background: #4a3fb9;
+            transform: translateY(-2px);
+        }
+        
+        .submit-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        /* Response Styles */
+        .claude-response {
+            background: #f0f4ff;
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .claude-avatar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 15px;
+            font-weight: 600;
+            color: #5a4fcf;
+        }
+        
+        .response-text {
+            color: #333;
+            line-height: 1.6;
+            margin-bottom: 15px;
+        }
+        
+        .loading-indicator {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #666;
+            font-style: italic;
+        }
+        
+        .spinner {
+            width: 20px;
+            height: 20px;
+            border: 2px solid #ddd;
+            border-top: 2px solid #5a4fcf;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .resource-list {
+            background: white;
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 15px;
+        }
+        
+        .resource-item {
+            padding: 12px;
+            border-bottom: 1px solid #eee;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .resource-item:last-child {
+            border-bottom: none;
+        }
+        
+        .resource-item:hover {
+            background: #f8f9fa;
+            padding-left: 18px;
+        }
+        
+        .resource-title {
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 3px;
+        }
+        
+        .resource-desc {
+            font-size: 13px;
+            color: #666;
+        }
+        
+        .claude-cta {
+            background: linear-gradient(135deg, #ff6b35, #f7931e);
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+            text-align: center;
+            color: white;
+        }
+        
+        .claude-cta h3 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+        }
+        
+        .claude-cta p {
+            margin: 0 0 15px 0;
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .claude-link {
+            display: inline-block;
+            background: white;
+            color: #f7931e;
+            padding: 12px 24px;
+            border-radius: 25px;
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        
+        .claude-link:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+        
+        .back-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            color: #5a4fcf;
+            text-decoration: none;
+            font-weight: 600;
+            margin-bottom: 20px;
+            cursor: pointer;
+        }
+        
+        .back-button:hover {
+            text-decoration: underline;
+        }
+        
+        .trends-preview {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+            text-align: center;
+        }
+        
+        .trends-preview h3 {
+            margin: 0 0 10px 0;
+            color: #333;
+        }
+        
+        .mini-chart {
+            display: flex;
+            align-items: flex-end;
+            justify-content: center;
+            gap: 5px;
+            height: 60px;
+            margin: 15px 0;
+        }
+        
+        .chart-bar {
+            width: 30px;
+            background: #5a4fcf;
+            border-radius: 5px 5px 0 0;
+            opacity: 0.7;
+        }
+        
+        .user-greeting {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+        
+        .logout-button {
+            background: none;
+            border: 1px solid #ddd;
+            color: #666;
+            padding: 8px 16px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="phone-container">
+        <!-- Screen 1: Login/Register -->
+        <div class="screen active" id="authScreen">
+            <div class="header">
+                <h1>WellCheck</h1>
+                <p>Your daily wellness companion</p>
+            </div>
+            
+            <div class="login-form">
+                <div class="form-group">
+                    <label for="username">Username</label>
+                    <input type="text" id="username" placeholder="Enter your username">
+                </div>
+                <div class="form-group">
+                    <label for="password">Password</label>
+                    <input type="password" id="password" placeholder="Enter your password">
+                </div>
+                <div class="auth-buttons">
+                    <button class="auth-button primary-button" onclick="login()">Login</button>
+                    <button class="auth-button secondary-button" onclick="register()">Register</button>
+                </div>
+            </div>
+            
+            <div style="background: #e8f5e8; border-radius: 10px; padding: 15px; font-size: 14px; color: #2d5a2d;">
+                <strong>Demo Account:</strong><br>
+                Username: demo<br>
+                Password: demo123
+            </div>
+        </div>
+        
+        <!-- Screen 2: Daily Check-in -->
+        <div class="screen" id="checkinScreen">
+            <div class="user-greeting" id="userGreeting">Welcome back!</div>
+            <button class="logout-button" onclick="logout()">Logout</button>
+            
+            <div class="header">
+                <h1>Daily Check-in</h1>
+                <p>How are you feeling today?</p>
+            </div>
+            
+            <div class="dimension-grid">
+                <div class="dimension-item">
+                    <div class="dimension-header">
+                        <div class="dimension-label">
+                            <span class="dimension-icon">💪</span>
+                            <span>Physical</span>
+                        </div>
+                    </div>
+                    <div class="rating-container">
+                        <button class="rating-button" onclick="setRating('physical', 1, this)">1</button>
+                        <button class="rating-button" onclick="setRating('physical', 2, this)">2</button>
+                        <button class="rating-button" onclick="setRating('physical', 3, this)">3</button>
+                        <button class="rating-button" onclick="setRating('physical', 4, this)">4</button>
+                        <button class="rating-button" onclick="setRating('physical', 5, this)">5</button>
+                    </div>
+                </div>
+                
+                <div class="dimension-item">
+                    <div class="dimension-header">
+                        <div class="dimension-label">
+                            <span class="dimension-icon">💰</span>
+                            <span>Financial</span>
+                        </div>
+                    </div>
+                    <div class="rating-container">
+                        <button class="rating-button" onclick="setRating('financial', 1, this)">1</button>
+                        <button class="rating-button" onclick="setRating('financial', 2, this)">2</button>
+                        <button class="rating-button" onclick="setRating('financial', 3, this)">3</button>
+                        <button class="rating-button" onclick="setRating('financial', 4, this)">4</button>
+                        <button class="rating-button" onclick="setRating('financial', 5, this)">5</button>
+                    </div>
+                </div>
+                
+                <div class="dimension-item">
+                    <div class="dimension-header">
+                        <div class="dimension-label">
+                            <span class="dimension-icon">❤️</span>
+                            <span>Emotional</span>
+                        </div>
+                    </div>
+                    <div class="rating-container">
+                        <button class="rating-button" onclick="setRating('emotional', 1, this)">1</button>
+                        <button class="rating-button" onclick="setRating('emotional', 2, this)">2</button>
+                        <button class="rating-button" onclick="setRating('emotional', 3, this)">3</button>
+                        <button class="rating-button" onclick="setRating('emotional', 4, this)">4</button>
+                        <button class="rating-button" onclick="setRating('emotional', 5, this)">5</button>
+                    </div>
+                </div>
+                
+                <div class="dimension-item">
+                    <div class="dimension-header">
+                        <div class="dimension-label">
+                            <span class="dimension-icon">🏡</span>
+                            <span>Environmental</span>
+                        </div>
+                    </div>
+                    <div class="rating-container">
+                        <button class="rating-button" onclick="setRating('environmental', 1, this)">1</button>
+                        <button class="rating-button" onclick="setRating('environmental', 2, this)">2</button>
+                        <button class="rating-button" onclick="setRating('environmental', 3, this)">3</button>
+                        <button class="rating-button" onclick="setRating('environmental', 4, this)">4</button>
+                        <button class="rating-button" onclick="setRating('environmental', 5, this)">5</button>
+                    </div>
+                </div>
+                
+                <div class="dimension-item">
+                    <div class="dimension-header">
+                        <div class="dimension-label">
+                            <span class="dimension-icon">👥</span>
+                            <span>Social</span>
+                        </div>
+                    </div>
+                    <div class="rating-container">
+                        <button class="rating-button" onclick="setRating('social', 1, this)">1</button>
+                        <button class="rating-button" onclick="setRating('social', 2, this)">2</button>
+                        <button class="rating-button" onclick="setRating('social', 3, this)">3</button>
+                        <button class="rating-button" onclick="setRating('social', 4, this)">4</button>
+                        <button class="rating-button" onclick="setRating('social', 5, this)">5</button>
+                    </div>
+                </div>
+                
+                <div class="dimension-item">
+                    <div class="dimension-header">
+                        <div class="dimension-label">
+                            <span class="dimension-icon">💼</span>
+                            <span>Occupational</span>
+                        </div>
+                    </div>
+                    <div class="rating-container">
+                        <button class="rating-button" onclick="setRating('occupational', 1, this)">1</button>
+                        <button class="rating-button" onclick="setRating('occupational', 2, this)">2</button>
+                        <button class="rating-button" onclick="setRating('occupational', 3, this)">3</button>
+                        <button class="rating-button" onclick="setRating('occupational', 4, this)">4</button>
+                        <button class="rating-button" onclick="setRating('occupational', 5, this)">5</button>
+                    </div>
+                </div>
+                
+                <div class="dimension-item">
+                    <div class="dimension-header">
+                        <div class="dimension-label">
+                            <span class="dimension-icon">🧠</span>
+                            <span>Intellectual</span>
+                        </div>
+                    </div>
+                    <div class="rating-container">
+                        <button class="rating-button" onclick="setRating('intellectual', 1, this)">1</button>
+                        <button class="rating-button" onclick="setRating('intellectual', 2, this)">2</button>
+                        <button class="rating-button" onclick="setRating('intellectual', 3, this)">3</button>
+                        <button class="rating-button" onclick="setRating('intellectual', 4, this)">4</button>
+                        <button class="rating-button" onclick="setRating('intellectual', 5, this)">5</button>
+                    </div>
+                </div>
+                
+                <div class="dimension-item">
+                    <div class="dimension-header">
+                        <div class="dimension-label">
+                            <span class="dimension-icon">✨</span>
+                            <span>Spiritual</span>
+                        </div>
+                    </div>
+                    <div class="rating-container">
+                        <button class="rating-button" onclick="setRating('spiritual', 1, this)">1</button>
+                        <button class="rating-button" onclick="setRating('spiritual', 2, this)">2</button>
+                        <button class="rating-button" onclick="setRating('spiritual', 3, this)">3</button>
+                        <button class="rating-button" onclick="setRating('spiritual', 4, this)">4</button>
+                        <button class="rating-button" onclick="setRating('spiritual', 5, this)">5</button>
+                    </div>
+                </div>
+            </div>
+            
+            <button class="submit-button" id="submitButton" onclick="submitCheckIn()">Complete Check-in</button>
+        </div>
+        
+        <!-- Screen 3: Claude Response -->
+        <div class="screen" id="responseScreen">
+            <a class="back-button" onclick="showScreen('checkinScreen')">← Back to Check-in</a>
+            
+            <div id="loadingContainer" class="claude-response">
+                <div class="claude-avatar">
+                    <span style="font-size: 24px;">🔮</span>
+                    <span>WellCheck AI Assistant</span>
+                </div>
+                <div class="loading-indicator">
+                    <div class="spinner"></div>
+                    <span>Analyzing your wellness check-in...</span>
+                </div>
+            </div>
+            
+            <div id="responseContainer"></div>
+        </div>
+    </div>
+    
+    <script>
+        
+        let currentUser = null;
+        let ratings = {};
+        let userHistory = {};
+        let userData = {}; // In-memory user storage
+        
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', function() {
+            // App starts at login screen - no persistent storage in demo
+        });
+        
+        // Authentication functions
+        function login() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                alert('Please enter both username and password');
+                return;
+            }
+            
+            // Simple demo authentication
+            if ((username === 'demo' && password === 'demo123') || password.length >= 6) {
+                currentUser = { username: username, joinDate: new Date() };
+                showScreen('checkinScreen');
+                updateUserGreeting();
+                loadUserHistory();
+            } else {
+                alert('Invalid credentials. For demo, use "demo/demo123" or any username with 6+ character password');
+            }
+        }
+        
+        function register() {
+            const username = document.getElementById('username').value;
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                alert('Please enter both username and password');
+                return;
+            }
+            
+            if (password.length < 6) {
+                alert('Password must be at least 6 characters');
+                return;
+            }
+            
+            currentUser = { username: username, joinDate: new Date() };
+            showScreen('checkinScreen');
+            updateUserGreeting();
+            initializeUserHistory();
+            alert('Account created successfully!');
+        }
+        
+        function logout() {
+            currentUser = null;
+            ratings = {};
+            userHistory = {};
+            showScreen('authScreen');
+            document.getElementById('username').value = '';
+            document.getElementById('password').value = '';
+        }
+        
+        function updateUserGreeting() {
+            const greeting = document.getElementById('userGreeting');
+            if (currentUser) {
+                greeting.textContent = `Welcome back, ${currentUser.username}!`;
+            }
+        }
+        
+        // Data persistence functions (in-memory for demo)
+        function loadUserHistory() {
+            if (userData[currentUser.username]) {
+                userHistory = userData[currentUser.username];
+            } else {
+                initializeUserHistory();
+            }
+        }
+        
+        function initializeUserHistory() {
+            userHistory = {
+                checkins: [],
+                patterns: {},
+                lastCheckin: null
+            };
+            saveUserHistory();
+        }
+        
+        function saveUserHistory() {
+            if (currentUser) {
+                userData[currentUser.username] = userHistory;
+            }
+        }
+        
+        function saveCheckin(ratings) {
+            const checkin = {
+                date: new Date().toISOString(),
+                ratings: { ...ratings },
+                timestamp: Date.now()
+            };
+            
+            userHistory.checkins.push(checkin);
+            userHistory.lastCheckin = checkin;
+            
+            // Keep only last 30 checkins for demo
+            if (userHistory.checkins.length > 30) {
+                userHistory.checkins = userHistory.checkins.slice(-30);
+            }
+            
+            saveUserHistory();
+            return checkin;
+        }
+        
+        // Rating functions
+        function setRating(dimension, rating, button) {
+            // Clear previous selection for this dimension
+            const buttons = button.parentElement.querySelectorAll('.rating-button');
+            buttons.forEach(btn => {
+                btn.classList.remove('selected', 'low');
+            });
+            
+            // Set new selection
+            if (rating <= 2) {
+                button.classList.add('low');
+            } else {
+                button.classList.add('selected');
+            }
+            
+            ratings[dimension] = rating;
+            
+            // Update submit button state
+            const submitButton = document.getElementById('submitButton');
+            if (Object.keys(ratings).length === 8) {
+                submitButton.disabled = false;
+                submitButton.textContent = 'Complete Check-in';
+            } else {
+                submitButton.disabled = true;
+                submitButton.textContent = `Complete Check-in (${Object.keys(ratings).length}/8)`;
+            }
+        }
+        
+        function submitCheckIn() {
+            if (Object.keys(ratings).length < 8) {
+                alert('Please rate all dimensions before submitting');
+                return;
+            }
+            
+            // Save the checkin
+            const checkin = saveCheckin(ratings);
+            
+            // Show response screen and get Claude analysis
+            showScreen('responseScreen');
+            getClaudeResponse(checkin);
+        }
+        
+        // Claude API functions (calls our backend)
+        async function getClaudeResponse(checkin) {
+            try {
+                const response = await fetch('/api/wellness-response', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        checkin: checkin,
+                        userHistory: userHistory
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    displayClaudeResponse(data.response, checkin);
+                } else {
+                    throw new Error(data.error);
+                }
+                
+            } catch (error) {
+                console.error('Error getting wellness response:', error);
+                displayErrorResponse();
+            }
+        }
+        
+        function displayClaudeResponse(response, checkin) {
+            // Hide loading
+            document.getElementById('loadingContainer').style.display = 'none';
+            
+            // Create response HTML
+            const responseHtml = `
+                <div class="claude-response">
+                    <div class="claude-avatar">
+                        <span style="font-size: 24px;">🔮</span>
+                        <span>WellCheck AI Assistant</span>
+                    </div>
+                    <div class="response-text">${response.replace(/\n/g, '<br>')}</div>
+                </div>
+                
+                ${generateTrendsPreview(checkin)}
+                
+                <div class="claude-cta">
+                    <h3>🌟 Want to explore this further?</h3>
+                    <p>Continue this conversation with Claude for deeper insights and personalized guidance.</p>
+                    <a href="https://claude.ai" target="_blank" class="claude-link">Continue on Claude.ai →</a>
+                </div>
+            `;
+            
+            document.getElementById('responseContainer').innerHTML = responseHtml;
+            
+            // Check if we should search for resources
+            const concerningRatings = Object.values(checkin.ratings).filter(r => r <= 2);
+            if (concerningRatings.length > 0) {
+                searchForResources(checkin);
+            }
+        }
+        
+        function displayErrorResponse() {
+            document.getElementById('loadingContainer').style.display = 'none';
+            document.getElementById('responseContainer').innerHTML = `
+                <div class="claude-response">
+                    <div class="claude-avatar">
+                        <span style="font-size: 24px;">🔮</span>
+                        <span>WellCheck AI Assistant</span>
+                    </div>
+                    <div class="response-text">
+                        I'm having trouble connecting right now, but I want you to know that completing your check-in is still valuable. 
+                        Keep tracking your wellness - every day of awareness counts in your recovery journey. 💪
+                    </div>
+                </div>
+                
+                <div class="claude-cta">
+                    <h3>🌟 Get support anytime</h3>
+                    <p>Chat with Claude directly for wellness support and guidance.</p>
+                    <a href="https://claude.ai" target="_blank" class="claude-link">Chat with Claude →</a>
+                </div>
+            `;
+        }
+        
+        async function searchForResources(checkin) {
+            // Identify which areas need resources
+            const concerningAreas = Object.entries(checkin.ratings)
+                .filter(([dim, rating]) => rating <= 2)
+                .map(([dim, rating]) => dim);
+            
+            if (concerningAreas.length === 0) return;
+            
+            try {
+                const response = await fetch('/api/search-resources', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        concerningAreas: concerningAreas,
+                        location: 'Oregon' // Could be made dynamic later
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success && data.resources.length > 0) {
+                    // Add resources to the response
+                    const resourcesHtml = `
+                        <div class="claude-response">
+                            <div class="claude-avatar">
+                                <span style="font-size: 24px;">🔍</span>
+                                <span>Resource Finder</span>
+                            </div>
+                            <div class="response-text">I found some resources that might help with the areas you're working on:</div>
+                            <div class="resource-list">
+                                ${data.resources.map(resource => `
+                                    <div class="resource-item" onclick="window.open('${resource.url}', '_blank')">
+                                        <div class="resource-title">${resource.title}</div>
+                                        <div class="resource-desc">${resource.description}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                    
+                    document.getElementById('responseContainer').insertAdjacentHTML('beforeend', resourcesHtml);
+                }
+                
+            } catch (error) {
+                console.error('Error searching for resources:', error);
+                // Fail silently - resources are supplementary
+            }
+        }
+        
+        function generateTrendsPreview(checkin) {
+            const recentCheckins = userHistory.checkins.slice(-5);
+            if (recentCheckins.length < 2) {
+                return `
+                    <div class="trends-preview">
+                        <h3>🌱 Starting Your Journey</h3>
+                        <p style="font-size: 14px; color: #666; margin: 0;">
+                            Keep checking in daily to see wellness patterns emerge over time
+                        </p>
+                    </div>
+                `;
+            }
+            
+            // Generate simple trend visualization
+            const chartBars = recentCheckins.map(checkin => {
+                const avg = Object.values(checkin.ratings).reduce((a, b) => a + b, 0) / 8;
+                const height = (avg / 5) * 100;
+                const color = avg <= 2.5 ? '#ff6b6b' : '#5a4fcf';
+                return `<div class="chart-bar" style="height: ${height}%; background: ${color};"></div>`;
+            }).join('');
+            
+            return `
+                <div class="trends-preview">
+                    <h3>📈 Your Progress</h3>
+                    <div class="mini-chart">${chartBars}</div>
+                    <p style="font-size: 14px; color: #666; margin: 0;">
+                        Tracking ${recentCheckins.length} days - keep building that awareness! 
+                    </p>
+                </div>
+            `;
+        }
+        
+        // Screen management
+        function showScreen(screenId) {
+            document.querySelectorAll('.screen').forEach(screen => {
+                screen.classList.remove('active');
+            });
+            document.getElementById(screenId).classList.add('active');
+            
+            // Reset states when changing screens
+            if (screenId === 'checkinScreen') {
+                ratings = {};
+                document.querySelectorAll('.rating-button').forEach(btn => {
+                    btn.classList.remove('selected', 'low');
+                });
+                document.getElementById('submitButton').disabled = true;
+                document.getElementById('submitButton').textContent = 'Complete Check-in (0/8)';
+            } else if (screenId === 'responseScreen') {
+                document.getElementById('loadingContainer').style.display = 'block';
+                document.getElementById('responseContainer').innerHTML = '';
+            }
+        }
+    </script>
+</body>
+</html>
