@@ -53,25 +53,181 @@ app.post('/api/wellness-response', async (req, res) => {
     }
 });
 
+// Location detection endpoint
+app.post('/api/detect-location', async (req, res) => {
+    try {
+        // Try to get user's location from IP
+        const userIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        
+        // For MVP, use a simple IP geolocation service
+        // In production, you'd use services like MaxMind, ipapi, or similar
+        if (userIP && userIP !== '::1' && !userIP.startsWith('127.')) {
+            try {
+                const geoResponse = await fetch(`http://ip-api.com/json/${userIP}`);
+                const geoData = await geoResponse.json();
+                
+                if (geoData.status === 'success') {
+                    res.json({ 
+                        success: true, 
+                        state: geoData.regionName,
+                        city: geoData.city,
+                        country: geoData.country
+                    });
+                    return;
+                }
+            } catch (geoError) {
+                console.error('IP geolocation failed:', geoError);
+            }
+        }
+        
+        // Default fallback
+        res.json({ 
+            success: true, 
+            state: 'Washington', 
+            city: 'Seattle',
+            country: 'United States',
+            detected: false // Indicates this is a fallback
+        });
+        
+    } catch (error) {
+        console.error('Error detecting location:', error);
+        res.json({ 
+            success: false, 
+            state: 'United States', 
+            city: 'Your Area'
+        });
+    }
+});
+
 // Web search endpoint for resources
 app.post('/api/search-resources', async (req, res) => {
     try {
-        const { concerningAreas, location = 'Oregon' } = req.body;
+        const { concerningAreas, location, city, state } = req.body;
         
-        // For MVP, return curated resources
-        // In production, could integrate with real search APIs
-        const resources = generateResourcesForAreas(concerningAreas, location);
+        // Create search queries for Claude to use
+        const locationString = city && state ? `${city}, ${state}` : location || 'your area';
+        
+        const searchQueries = concerningAreas.map(area => {
+            switch(area) {
+                case 'financial': 
+                    return `financial assistance programs ${locationString}`;
+                case 'occupational': 
+                    return `job search career services ${locationString}`;
+                case 'emotional': 
+                    return `mental health crisis support ${locationString}`;
+                case 'physical': 
+                    return `healthcare community health centers ${locationString}`;
+                case 'social': 
+                    return `support groups community resources ${locationString}`;
+                case 'environmental': 
+                    return `housing assistance ${locationString}`;
+                case 'intellectual': 
+                    return `adult education resources ${locationString}`;
+                case 'spiritual': 
+                    return `spiritual wellness resources ${locationString}`;
+                default: 
+                    return `wellness resources ${locationString}`;
+            }
+        });
+        
+        // Use Claude to search and format resources
+        const prompt = `You are a helpful resource finder. I need you to search for and provide specific, actionable resources for someone dealing with these concerns: ${concerningAreas.join(', ')}.
+
+Location: ${locationString}
+
+For each concerning area, find 1-2 specific resources (websites, phone numbers, local organizations) that would actually help someone in ${locationString}.
+
+Format your response as a JSON array of resources like this:
+[
+  {
+    "title": "📞 Specific Organization Name",
+    "description": "Brief description of what they offer",
+    "url": "actual website URL"
+  }
+]
+
+Focus on:
+- Government services (unemployment, health departments, etc.)
+- 211 services for the area
+- Crisis lines (988, local crisis centers)
+- Local nonprofits and community organizations
+- National resources with local chapters
+
+Keep descriptions brief and actionable. Limit to 4 resources total.`;
+
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': process.env.CLAUDE_API_KEY,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 1000,
+                messages: [{
+                    role: 'user',
+                    content: prompt
+                }]
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Claude API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        let resources;
+        
+        try {
+            // Try to parse Claude's JSON response
+            const resourceText = data.content[0].text;
+            const jsonMatch = resourceText.match(/\[[\s\S]*\]/);
+            if (jsonMatch) {
+                resources = JSON.parse(jsonMatch[0]);
+            } else {
+                throw new Error('No JSON found in response');
+            }
+        } catch (parseError) {
+            console.error('Error parsing Claude response:', parseError);
+            // Fallback to basic national resources
+            resources = [
+                {
+                    title: "📞 211 Information & Referral",
+                    description: `Call 2-1-1 for local help in ${locationString}`,
+                    url: "https://www.211.org"
+                },
+                {
+                    title: "🆘 988 Crisis Lifeline",
+                    description: "Call or text 988 for mental health crisis support",
+                    url: "https://988lifeline.org"
+                }
+            ];
+        }
         
         res.json({ 
             success: true, 
-            resources 
+            resources: resources.slice(0, 4) // Limit to 4
         });
         
     } catch (error) {
         console.error('Error searching resources:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'Failed to search resources' 
+        
+        // Fallback resources
+        res.json({ 
+            success: true,
+            resources: [
+                {
+                    title: "📞 211 Help Line",
+                    description: "Call 2-1-1 for local assistance anywhere in the US",
+                    url: "https://www.211.org"
+                },
+                {
+                    title: "🆘 988 Crisis Support",
+                    description: "Call or text 988 for mental health crisis help",
+                    url: "https://988lifeline.org"
+                }
+            ]
         });
     }
 });
@@ -121,145 +277,204 @@ Response:`;
     return prompt;
 }
 
-function generateResourcesForAreas(concerningAreas, location) {
+function generateResourcesForAreas(concerningAreas, location = 'Oregon') {
     const resourceDatabase = {
+        financial: {
+            'Oregon': [
+                {
+                    title: "💰 Oregon Employment Department", 
+                    description: "File for unemployment benefits and access job search resources",
+                    url: "https://www.oregon.gov/employ/"
+                },
+                {
+                    title: "🏦 211info Oregon",
+                    description: "Connect with local emergency financial assistance programs", 
+                    url: "https://www.211info.org"
+                }
+            ],
+            'Washington': [
+                {
+                    title: "💰 Washington State Employment Security", 
+                    description: "File for unemployment benefits and job search assistance",
+                    url: "https://esd.wa.gov/"
+                },
+                {
+                    title: "🏦 Washington 211",
+                    description: "Find local financial assistance and emergency aid", 
+                    url: "https://wa211.org"
+                }
+            ],
+            'North Carolina': [
+                {
+                    title: "💰 NC Department of Commerce", 
+                    description: "Job search resources and unemployment assistance",
+                    url: "https://www.nccommerce.com/"
+                },
+                {
+                    title: "🏦 NC 211",
+                    description: "Connect with local financial assistance programs", 
+                    url: "https://www.nc211.org"
+                }
+            ]
+        },
+        occupational: {
+            'Oregon': [
+                {
+                    title: "💼 WorkSource Oregon",
+                    description: "Free career counseling, resume help, and job placement services",
+                    url: "https://www.worksourceoregon.org"
+                }
+            ],
+            'Washington': [
+                {
+                    title: "💼 WorkSource Washington",
+                    description: "Career services, job training, and employment resources",
+                    url: "https://www.worksourcewa.com"
+                }
+            ],
+            'North Carolina': [
+                {
+                    title: "💼 NCWorks",
+                    description: "Job search assistance and career development services",
+                    url: "https://www.ncworks.gov"
+                }
+            ]
+        },
+        emotional: {
+            'Oregon': [
+                {
+                    title: "🆘 Oregon Crisis & Suicide Lifeline",
+                    description: "Call 988 for immediate crisis support, available 24/7",
+                    url: "https://www.oregon.gov/oha/ph/preventionwellness/suicideprevention/"
+                },
+                {
+                    title: "🧠 NAMI Oregon",
+                    description: "Mental health support groups and educational resources",
+                    url: "https://namior.org"
+                }
+            ],
+            'Washington': [
+                {
+                    title: "🆘 Crisis Text Line",
+                    description: "Text HOME to 741741 for crisis support",
+                    url: "https://www.crisistextline.org"
+                },
+                {
+                    title: "🧠 NAMI Washington",
+                    description: "Mental health support and advocacy",
+                    url: "https://namiwashington.org"
+                }
+            ],
+            'North Carolina': [
+                {
+                    title: "🆘 NC Crisis Line",
+                    description: "Call 988 for immediate mental health crisis support",
+                    url: "https://www.ncdhhs.gov/about/department-initiatives/crisis-services"
+                },
+                {
+                    title: "🧠 NAMI North Carolina",
+                    description: "Mental health resources and support groups",
+                    url: "https://naminc.org"
+                }
+            ]
+        },
+        physical: {
+            'Oregon': [
+                {
+                    title: "🏥 Oregon Health Authority",
+                    description: "Find community health centers and healthcare resources",
+                    url: "https://www.oregon.gov/oha/"
+                }
+            ],
+            'Washington': [
+                {
+                    title: "🏥 Washington State Health Dept",
+                    description: "Community health resources and healthcare access",
+                    url: "https://www.doh.wa.gov/"
+                }
+            ],
+            'North Carolina': [
+                {
+                    title: "🏥 NC Dept of Health",
+                    description: "Public health resources and community health centers",
+                    url: "https://www.ncdhhs.gov/"
+                }
+            ]
+        },
+        social: {
+            'Oregon': [
+                {
+                    title: "👥 Oregon Support Groups",
+                    description: "Find local community and peer support groups",
+                    url: "https://www.oregon.gov/oha/hsd/amh/pages/recovery-support.aspx"
+                }
+            ],
+            'Washington': [
+                {
+                    title: "👥 Washington Recovery Support",
+                    description: "Peer support and recovery community resources",
+                    url: "https://www.hca.wa.gov/about-hca/behavioral-health-recovery"
+                }
+            ],
+            'North Carolina': [
+                {
+                    title: "👥 NC Peer Support",
+                    description: "Peer support services and community resources",
+                    url: "https://www.ncdhhs.gov/divisions/mental-health-developmental-disabilities-and-substance-abuse"
+                }
+            ]
+        }
+    };
+    
+    // National/universal resources as fallback
+    const nationalResources = {
         financial: [
             {
-                title: "💰 Oregon Employment Department", 
-                description: "File for unemployment benefits and access job search resources",
-                url: "https://www.oregon.gov/employ/"
-            },
-            {
-                title: "🏦 211info Financial Assistance",
-                description: "Connect with local emergency financial assistance programs", 
-                url: "https://www.211info.org"
-            },
-            {
-                title: "💳 SNAP Benefits Oregon",
-                description: "Apply for food assistance and nutrition support",
-                url: "https://www.oregon.gov/dhs/assistance/food-benefits/"
-            }
-        ],
-        occupational: [
-            {
-                title: "💼 WorkSource Oregon",
-                description: "Free career counseling, resume help, and job placement services",
-                url: "https://www.worksourceoregon.org"
-            },
-            {
-                title: "🌐 Oregon Career Information System",
-                description: "Career exploration tools and job market data",
-                url: "https://www.oregoncis.uoregon.edu"
-            },
-            {
-                title: "🎓 Portland Community College",
-                description: "Job training programs and career development courses",
-                url: "https://www.pcc.edu"
+                title: "📞 211 National",
+                description: "Call 2-1-1 for local financial assistance anywhere in the US", 
+                url: "https://www.211.org"
             }
         ],
         emotional: [
             {
-                title: "🆘 Oregon Crisis & Suicide Lifeline",
-                description: "Call 988 for immediate crisis support, available 24/7",
-                url: "https://www.oregon.gov/oha/ph/preventionwellness/suicideprevention/"
-            },
-            {
-                title: "🧠 NAMI Oregon",
-                description: "Mental health support groups and educational resources",
-                url: "https://namior.org"
-            },
-            {
-                title: "💬 Crisis Text Line",
-                description: "Text HOME to 741741 for crisis counseling via text",
-                url: "https://www.crisistextline.org"
+                title: "🆘 988 Suicide & Crisis Lifeline",
+                description: "Call or text 988 for mental health crisis support nationwide",
+                url: "https://988lifeline.org"
             }
         ],
-        physical: [
+        occupational: [
             {
-                title: "🏥 Oregon Health Authority",
-                description: "Find community health centers and healthcare resources",
-                url: "https://www.oregon.gov/oha/"
-            },
-            {
-                title: "🩺 Federally Qualified Health Centers",
-                description: "Low-cost healthcare regardless of insurance status",
-                url: "https://findahealthcenter.hrsa.gov/"
-            }
-        ],
-        social: [
-            {
-                title: "👥 AA Meetings Oregon",
-                description: "Find local Alcoholics Anonymous meetings and support groups",
-                url: "https://www.aa.org"
-            },
-            {
-                title: "🤝 NA Meetings Oregon", 
-                description: "Narcotics Anonymous meetings and recovery community",
-                url: "https://www.na.org"
-            },
-            {
-                title: "🌟 SMART Recovery",
-                description: "Alternative recovery support meetings and tools",
-                url: "https://www.smartrecovery.org"
-            }
-        ],
-        environmental: [
-            {
-                title: "🏠 Oregon Housing Authority",
-                description: "Housing assistance and emergency shelter resources",
-                url: "https://www.oregon.gov/ohcs/"
-            },
-            {
-                title: "🆘 211info Housing Help",
-                description: "Emergency housing assistance and rental support",
-                url: "https://www.211info.org"
-            }
-        ],
-        intellectual: [
-            {
-                title: "📚 Multnomah County Library",
-                description: "Free educational resources, computer access, and classes",
-                url: "https://multcolib.org"
-            },
-            {
-                title: "🎓 Oregon Adult Education",
-                description: "GED classes and adult learning programs",
-                url: "https://www.oregon.gov/ode/students-and-family/AdultEd/"
-            }
-        ],
-        spiritual: [
-            {
-                title: "⛪ Recovery-Friendly Faith Communities",
-                description: "Find supportive religious and spiritual communities",
-                url: "https://www.oregon.gov/oha/hsd/amh/pages/recovery-support.aspx"
-            },
-            {
-                title: "🧘 Mindfulness-Based Recovery",
-                description: "Meditation and spiritual wellness resources",
-                url: "https://mindfulnessbasedaddictionrecovery.com"
+                title: "💼 CareerOneStop",
+                description: "Federal job search and career resources",
+                url: "https://www.careeronestop.org"
             }
         ]
     };
     
     let resources = [];
     concerningAreas.forEach(area => {
-        if (resourceDatabase[area]) {
-            resources.push(...resourceDatabase[area]);
+        // Try to get state-specific resources first
+        if (resourceDatabase[area] && resourceDatabase[area][location]) {
+            resources.push(...resourceDatabase[area][location]);
+        }
+        // Fall back to national resources
+        else if (nationalResources[area]) {
+            resources.push(...nationalResources[area]);
         }
     });
     
-    // Add general resources if none found
+    // Add general national resources if none found
     if (resources.length === 0) {
         resources = [
             {
-                title: "📞 211info Oregon",
-                description: "Dial 2-1-1 for help finding any local resources", 
-                url: "https://www.211info.org"
+                title: "📞 211 Information & Referral",
+                description: "Dial 2-1-1 for help finding local resources in your area", 
+                url: "https://www.211.org"
             },
             {
-                title: "🌟 Oregon Recovers",
-                description: "Statewide recovery support and advocacy",
-                url: "https://www.oregonrecovers.org"
+                title: "🌟 Mental Health America",
+                description: "National mental health resources and support",
+                url: "https://www.mhanational.org"
             }
         ];
     }
