@@ -548,12 +548,49 @@
                 </div>
             </div>
             
-            <button class="submit-button" id="submitButton" onclick="submitCheckIn()">Complete Check-in</button>
+            <button class="submit-button" id="submitButton" onclick="submitCheckIn()">Continue →</button>
+        </div>
+        
+        <!-- Screen 2.5: Follow-up Question -->
+        <div class="screen" id="followupScreen">
+            <a class="back-button" onclick="showScreen('checkinScreen')">← Back to Ratings</a>
+            
+            <div class="header">
+                <h1>Tell me more</h1>
+                <p id="followupPrompt">Help me understand what's happening</p>
+            </div>
+            
+            <div class="claude-response">
+                <div class="claude-avatar">
+                    <span style="font-size: 24px;">🔮</span>
+                    <span>WellCheck AI Assistant</span>
+                </div>
+                <div class="response-text" id="followupQuestion">
+                    I'd like to understand what's behind your ratings today. Could you share what's happening in your life right now?
+                </div>
+                
+                <div style="background: white; border-radius: 10px; padding: 15px; margin: 15px 0;">
+                    <textarea 
+                        id="userContext" 
+                        placeholder="Share as much or as little as you'd like..." 
+                        style="width: 100%; height: 120px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; font-family: inherit; resize: vertical; box-sizing: border-box;">
+                    </textarea>
+                    <button onclick="submitWithContext()" style="width: 100%; margin-top: 12px; padding: 15px; background: #5a4fcf; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 16px;">
+                        Get My Wellness Insights →
+                    </button>
+                </div>
+                
+                <div style="text-align: center; margin-top: 15px;">
+                    <button onclick="submitWithContext()" style="background: none; border: none; color: #666; cursor: pointer; text-decoration: underline; font-size: 14px;">
+                        Skip - just analyze my ratings
+                    </button>
+                </div>
+            </div>
         </div>
         
         <!-- Screen 3: Claude Response -->
         <div class="screen" id="responseScreen">
-            <a class="back-button" onclick="showScreen('checkinScreen')">← Back to Check-in</a>
+            <a class="back-button" onclick="showScreen('followupScreen')">← Back</a>
             
             <div id="loadingContainer" class="claude-response">
                 <div class="claude-avatar">
@@ -664,10 +701,11 @@
             }
         }
         
-        function saveCheckin(ratings) {
+        function saveCheckin(ratings, userContext = '') {
             const checkin = {
                 date: new Date().toISOString(),
                 ratings: { ...ratings },
+                context: userContext,
                 timestamp: Date.now()
             };
             
@@ -700,25 +738,76 @@
             
             ratings[dimension] = rating;
             
-            // Update submit button state
+            // Update submit button - now allows partial ratings
             const submitButton = document.getElementById('submitButton');
-            if (Object.keys(ratings).length === 8) {
+            const ratedCount = Object.keys(ratings).length;
+            
+            if (ratedCount > 0) {
                 submitButton.disabled = false;
-                submitButton.textContent = 'Complete Check-in';
+                submitButton.textContent = ratedCount === 8 ? 'Continue →' : `Continue → (${ratedCount}/8 rated)`;
             } else {
                 submitButton.disabled = true;
-                submitButton.textContent = `Complete Check-in (${Object.keys(ratings).length}/8)`;
+                submitButton.textContent = 'Rate at least one dimension to continue';
             }
         }
         
         function submitCheckIn() {
-            if (Object.keys(ratings).length < 8) {
-                alert('Please rate all dimensions before submitting');
+            if (Object.keys(ratings).length === 0) {
+                alert('Please rate at least one dimension before continuing');
                 return;
             }
             
-            // Save the checkin
-            const checkin = saveCheckin(ratings);
+            // Generate contextual follow-up question
+            generateFollowupQuestion();
+            showScreen('followupScreen');
+        }
+        
+        function generateFollowupQuestion() {
+            const ratedDimensions = Object.entries(ratings);
+            const concerns = ratedDimensions.filter(([dim, rating]) => rating <= 2);
+            const strengths = ratedDimensions.filter(([dim, rating]) => rating >= 4);
+            
+            const dimensionNames = {
+                physical: 'physical health',
+                financial: 'financial situation', 
+                emotional: 'emotional well-being',
+                environmental: 'living environment',
+                social: 'relationships and social connections',
+                occupational: 'work or career',
+                intellectual: 'mental stimulation and learning',
+                spiritual: 'spiritual or philosophical well-being'
+            };
+            
+            let question = '';
+            let prompt = '';
+            
+            if (concerns.length > 0) {
+                const concernArea = concerns[0][0];
+                const concernName = dimensionNames[concernArea];
+                
+                question = `I noticed you rated your ${concernName} as ${concerns[0][1]}/5. What's happening in that area of your life right now?`;
+                prompt = `Share what's going on with your ${concernName}`;
+                
+                if (concerns.length > 1) {
+                    question += ` I also see some other areas rated lower - feel free to share about any of them.`;
+                }
+            } else if (strengths.length > 0) {
+                question = `I see you're doing well overall! What's been helping you maintain your wellness lately?`;
+                prompt = `Share what's working well for you`;
+            } else {
+                question = `I'd like to understand what's behind your ratings today. What's happening in your life right now?`;
+                prompt = `Help me understand your current situation`;
+            }
+            
+            document.getElementById('followupQuestion').textContent = question;
+            document.getElementById('followupPrompt').textContent = prompt;
+        }
+        
+        function submitWithContext() {
+            const userContext = document.getElementById('userContext').value.trim();
+            
+            // Save the checkin with context
+            const checkin = saveCheckin(ratings, userContext);
             
             // Show response screen and get Claude analysis
             showScreen('responseScreen');
@@ -757,7 +846,7 @@
             // Hide loading
             document.getElementById('loadingContainer').style.display = 'none';
             
-            // Create response HTML
+            // Create response HTML (without Claude CTA)
             const responseHtml = `
                 <div class="claude-response">
                     <div class="claude-avatar">
@@ -768,12 +857,6 @@
                 </div>
                 
                 ${generateTrendsPreview(checkin)}
-                
-                <div class="claude-cta">
-                    <h3>🌟 Want to explore this further?</h3>
-                    <p>Continue this conversation with Claude for deeper insights and personalized guidance.</p>
-                    <a href="https://claude.ai" target="_blank" class="claude-link">Continue on Claude.ai →</a>
-                </div>
             `;
             
             document.getElementById('responseContainer').innerHTML = responseHtml;
@@ -781,8 +864,25 @@
             // Check if we should search for resources
             const concerningRatings = Object.values(checkin.ratings).filter(r => r <= 2);
             if (concerningRatings.length > 0) {
+                console.log('Starting resource search...');
                 searchForResources(checkin);
+            } else {
+                console.log('No concerning ratings, adding Claude CTA immediately');
+                addClaudeCTA();
             }
+        }
+        
+        function addClaudeCTA() {
+            console.log('Adding Claude CTA at the end');
+            const claudeCTA = `
+                <div class="claude-cta">
+                    <h3>🌟 Want to explore this further?</h3>
+                    <p>Continue this conversation with Claude for deeper insights and personalized guidance.</p>
+                    <a href="https://claude.ai" target="_blank" class="claude-link">Continue on Claude.ai →</a>
+                </div>
+            `;
+            
+            document.getElementById('responseContainer').insertAdjacentHTML('beforeend', claudeCTA);
         }
         
         function displayErrorResponse() {
@@ -813,9 +913,31 @@
                 .filter(([dim, rating]) => rating <= 2)
                 .map(([dim, rating]) => dim);
             
-            if (concerningAreas.length === 0) return;
+            if (concerningAreas.length === 0) {
+                console.log('No concerning areas found');
+                addClaudeCTA();
+                return;
+            }
             
             try {
+                // Detect user location first
+                console.log('🔍 Detecting location...');
+                const locationResponse = await fetch('/api/detect-location', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const locationData = await locationResponse.json();
+                console.log('📍 Location detected:', locationData);
+                
+                // Use detected location or fallback
+                const userCity = locationData.success ? locationData.city : 'Your City';
+                const userState = locationData.success ? locationData.state : 'Your State';
+                
+                console.log('🔎 Searching resources for:', userCity, userState);
+                
                 const response = await fetch('/api/search-resources', {
                     method: 'POST',
                     headers: {
@@ -823,11 +945,14 @@
                     },
                     body: JSON.stringify({
                         concerningAreas: concerningAreas,
-                        location: 'Oregon' // Could be made dynamic later
+                        city: userCity,
+                        state: userState,
+                        location: `${userCity}, ${userState}`
                     })
                 });
                 
                 const data = await response.json();
+                console.log('🎯 Resources found:', data);
                 
                 if (data.success && data.resources.length > 0) {
                     // Add resources to the response
@@ -837,7 +962,7 @@
                                 <span style="font-size: 24px;">🔍</span>
                                 <span>Resource Finder</span>
                             </div>
-                            <div class="response-text">I found some resources that might help with the areas you're working on:</div>
+                            <div class="response-text">I found some resources in ${userCity}, ${userState} that might help:</div>
                             <div class="resource-list">
                                 ${data.resources.map(resource => `
                                     <div class="resource-item" onclick="window.open('${resource.url}', '_blank')">
@@ -850,11 +975,18 @@
                     `;
                     
                     document.getElementById('responseContainer').insertAdjacentHTML('beforeend', resourcesHtml);
+                    console.log('✅ Resources added to page');
+                } else {
+                    console.log('❌ No resources returned or API failed');
                 }
                 
+                // Always add Claude CTA at the end
+                addClaudeCTA();
+                
             } catch (error) {
-                console.error('Error searching for resources:', error);
-                // Fail silently - resources are supplementary
+                console.error('💥 Error searching for resources:', error);
+                // Still add Claude CTA even if resources fail
+                addClaudeCTA();
             }
         }
         
@@ -904,7 +1036,10 @@
                     btn.classList.remove('selected', 'low');
                 });
                 document.getElementById('submitButton').disabled = true;
-                document.getElementById('submitButton').textContent = 'Complete Check-in (0/8)';
+                document.getElementById('submitButton').textContent = 'Rate at least one dimension to continue';
+            } else if (screenId === 'followupScreen') {
+                // Clear previous context
+                document.getElementById('userContext').value = '';
             } else if (screenId === 'responseScreen') {
                 document.getElementById('loadingContainer').style.display = 'block';
                 document.getElementById('responseContainer').innerHTML = '';
