@@ -613,6 +613,7 @@
         let ratings = {};
         let userHistory = {};
         let userData = {}; // In-memory user storage
+        let currentCheckin = null; // Store current check-in data
         
         // Initialize app
         document.addEventListener('DOMContentLoaded', function() {
@@ -757,15 +758,54 @@
                 return;
             }
             
-            // Generate contextual follow-up question
-            generateFollowupQuestion();
+            // First, show preliminary insights
+            showPreliminaryInsights();
+        }
+        
+        function showPreliminaryInsights() {
+            const ratedCount = Object.keys(ratings).length;
+            const concerns = Object.entries(ratings).filter(([dim, rating]) => rating <= 2);
+            const strengths = Object.entries(ratings).filter(([dim, rating]) => rating >= 4);
+            
+            const dimensionNames = {
+                physical: 'physical health',
+                financial: 'financial situation', 
+                emotional: 'emotional well-being',
+                environmental: 'living environment',
+                social: 'relationships',
+                occupational: 'work/career',
+                intellectual: 'mental stimulation',
+                spiritual: 'spiritual well-being'
+            };
+            
+            let insightText = `Thanks for rating ${ratedCount} dimension${ratedCount > 1 ? 's' : ''}. `;
+            
+            if (concerns.length > 0) {
+                const concernNames = concerns.map(([dim, rating]) => dimensionNames[dim]).join(' and ');
+                insightText += `I notice you're experiencing some challenges with ${concernNames}. `;
+            }
+            
+            if (strengths.length > 0) {
+                const strengthNames = strengths.map(([dim, rating]) => dimensionNames[dim]).join(' and ');
+                insightText += `It's good to see your ${strengthNames} ${strengths.length > 1 ? 'are' : 'is'} going well. `;
+            }
+            
+            insightText += `I'd love to understand more about your situation to give you better support.`;
+            
+            // Update the follow-up screen with preliminary insights
+            document.getElementById('followupQuestion').innerHTML = `
+                <div style="margin-bottom: 20px; padding: 15px; background: #f0f4ff; border-radius: 10px; border-left: 4px solid #5a4fcf;">
+                    ${insightText}
+                </div>
+                ${generateFollowupQuestionText()}
+            `;
+            
             showScreen('followupScreen');
         }
         
-        function generateFollowupQuestion() {
-            const ratedDimensions = Object.entries(ratings);
-            const concerns = ratedDimensions.filter(([dim, rating]) => rating <= 2);
-            const strengths = ratedDimensions.filter(([dim, rating]) => rating >= 4);
+        function generateFollowupQuestionText() {
+            const concerns = Object.entries(ratings).filter(([dim, rating]) => rating <= 2);
+            const strengths = Object.entries(ratings).filter(([dim, rating]) => rating >= 4);
             
             const dimensionNames = {
                 physical: 'physical health',
@@ -778,40 +818,39 @@
                 spiritual: 'spiritual or philosophical well-being'
             };
             
-            let question = '';
-            let prompt = '';
-            
             if (concerns.length > 0) {
                 const concernArea = concerns[0][0];
                 const concernName = dimensionNames[concernArea];
                 
-                question = `I noticed you rated your ${concernName} as ${concerns[0][1]}/5. What's happening in that area of your life right now?`;
-                prompt = `Share what's going on with your ${concernName}`;
+                let question = `What's happening with your ${concernName} right now? I'd like to understand your specific situation so I can offer more helpful insights.`;
                 
                 if (concerns.length > 1) {
-                    question += ` I also see some other areas rated lower - feel free to share about any of them.`;
+                    question += ` Feel free to share about any of the areas you rated lower.`;
                 }
+                
+                return question;
             } else if (strengths.length > 0) {
-                question = `I see you're doing well overall! What's been helping you maintain your wellness lately?`;
-                prompt = `Share what's working well for you`;
+                return `What's been helping you maintain your wellness lately? I'd love to learn from what's working for you.`;
             } else {
-                question = `I'd like to understand what's behind your ratings today. What's happening in your life right now?`;
-                prompt = `Help me understand your current situation`;
+                return `What's happening in your life right now? Help me understand your current situation so I can offer better support.`;
             }
-            
-            document.getElementById('followupQuestion').textContent = question;
-            document.getElementById('followupPrompt').textContent = prompt;
+        }
+        
+        function generateFollowupQuestion() {
+            // This function is now simplified since we handle it in showPreliminaryInsights
+            const questionText = generateFollowupQuestionText();
+            document.getElementById('followupPrompt').textContent = 'Share your situation';
         }
         
         function submitWithContext() {
             const userContext = document.getElementById('userContext').value.trim();
             
             // Save the checkin with context
-            const checkin = saveCheckin(ratings, userContext);
+            currentCheckin = saveCheckin(ratings, userContext);
             
             // Show response screen and get Claude analysis
             showScreen('responseScreen');
-            getClaudeResponse(checkin);
+            getClaudeResponse(currentCheckin);
         }
         
         // Claude API functions (calls our backend)
@@ -976,6 +1015,12 @@
                     
                     document.getElementById('responseContainer').insertAdjacentHTML('beforeend', resourcesHtml);
                     console.log('✅ Resources added to page');
+                    
+                    // Always offer location verification since IP geolocation can be inaccurate
+                    if (locationData.detected) {
+                        console.log('📍 Showing location verification option');
+                        addLocationCorrection(userCity, userState);
+                    }
                 } else {
                     console.log('❌ No resources returned or API failed');
                 }
@@ -987,6 +1032,124 @@
                 console.error('💥 Error searching for resources:', error);
                 // Still add Claude CTA even if resources fail
                 addClaudeCTA();
+            }
+        }
+        
+        function addLocationCorrection(detectedCity, detectedState) {
+            const correctionHtml = `
+                <div style="background: #fff3cd; border: 1px solid #ffeaa7; border-radius: 10px; padding: 15px; margin: 15px 0; text-align: center;">
+                    <div style="font-size: 14px; color: #856404; margin-bottom: 10px;">
+                        📍 I detected you in <strong>${detectedCity}, ${detectedState}</strong>. Is this correct?
+                    </div>
+                    <div style="display: flex; gap: 10px; justify-content: center;">
+                        <button onclick="this.parentElement.parentElement.style.display='none'" style="padding: 8px 16px; background: #28a745; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 12px;">
+                            ✓ Correct
+                        </button>
+                        <button onclick="showLocationCorrection()" style="padding: 8px 16px; background: #5a4fcf; color: white; border: none; border-radius: 5px; cursor: pointer; font-size: 12px;">
+                            📝 Wrong Location
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('responseContainer').insertAdjacentHTML('beforeend', correctionHtml);
+        }
+        
+        function showLocationCorrection() {
+            const correctionForm = `
+                <div id="locationCorrection" style="background: white; border: 2px solid #5a4fcf; border-radius: 10px; padding: 20px; margin: 15px 0;">
+                    <h4 style="margin: 0 0 15px 0; color: #5a4fcf;">Correct Your Location</h4>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <input type="text" id="correctCity" placeholder="Your City" style="flex: 1; min-width: 120px; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <input type="text" id="correctState" placeholder="Your State" style="flex: 1; min-width: 120px; padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <button onclick="updateLocationAndResources()" style="padding: 8px 16px; background: #5a4fcf; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                            Update Resources
+                        </button>
+                    </div>
+                    <div style="font-size: 12px; color: #666; margin-top: 8px;">
+                        Example: Vancouver, WA or Portland, OR
+                    </div>
+                </div>
+            `;
+            
+            // Replace the correction notice with the form
+            const existing = document.querySelector('[style*="background: #fff3cd"]');
+            if (existing) {
+                existing.outerHTML = correctionForm;
+            }
+        }
+        
+        function updateLocationAndResources() {
+            const city = document.getElementById('correctCity').value.trim();
+            const state = document.getElementById('correctState').value.trim();
+            
+            if (!city || !state) {
+                alert('Please enter both city and state');
+                return;
+            }
+            
+            console.log('🔄 Updating location to:', city, state);
+            
+            // Remove the correction form
+            const form = document.getElementById('locationCorrection');
+            if (form) form.remove();
+            
+            // Re-search for resources with correct location
+            searchResourcesWithLocation(city, state);
+        }
+        
+        async function searchResourcesWithLocation(city, state) {
+            try {
+                console.log('🔎 Searching resources for corrected location:', city, state);
+                
+                const concerningAreas = Object.entries(currentCheckin.ratings)
+                    .filter(([dim, rating]) => rating <= 2)
+                    .map(([dim, rating]) => dim);
+                
+                const response = await fetch('/api/search-resources', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        concerningAreas: concerningAreas,
+                        city: city,
+                        state: state,
+                        location: `${city}, ${state}`
+                    })
+                });
+                
+                const data = await response.json();
+                console.log('🎯 Updated resources:', data);
+                
+                if (data.success && data.resources.length > 0) {
+                    // Find and update the existing resource section
+                    const existingResources = document.querySelector('.claude-response:has(.resource-list)');
+                    if (existingResources) {
+                        const newResourcesHtml = `
+                            <div class="claude-response">
+                                <div class="claude-avatar">
+                                    <span style="font-size: 24px;">🔍</span>
+                                    <span>Resource Finder</span>
+                                </div>
+                                <div class="response-text">I found updated resources in ${city}, ${state}:</div>
+                                <div class="resource-list">
+                                    ${data.resources.map(resource => `
+                                        <div class="resource-item" onclick="window.open('${resource.url}', '_blank')">
+                                            <div class="resource-title">${resource.title}</div>
+                                            <div class="resource-desc">${resource.description}</div>
+                                        </div>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                        existingResources.outerHTML = newResourcesHtml;
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Error updating resources:', error);
+                alert('Sorry, there was an error updating the resources. Please try again.');
             }
         }
         
