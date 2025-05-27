@@ -57,21 +57,33 @@ app.post('/api/wellness-response', async (req, res) => {
 app.post('/api/detect-location', async (req, res) => {
     try {
         // Try to get user's location from IP
-        const userIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        let userIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        
+        // Clean up IP address (handle potential multiple IPs in x-forwarded-for)
+        if (userIP && userIP.includes(',')) {
+            userIP = userIP.split(',')[0].trim();
+        }
+        
+        console.log('Detecting location for IP:', userIP);
         
         // For MVP, use a simple IP geolocation service
-        // In production, you'd use services like MaxMind, ipapi, or similar
-        if (userIP && userIP !== '::1' && !userIP.startsWith('127.')) {
+        if (userIP && userIP !== '::1' && !userIP.startsWith('127.') && !userIP.startsWith('::ffff:127.')) {
             try {
-                const geoResponse = await fetch(`http://ip-api.com/json/${userIP}`);
+                const geoResponse = await fetch(`http://ip-api.com/json/${userIP}?fields=status,country,regionName,city,lat,lon`);
                 const geoData = await geoResponse.json();
+                
+                console.log('Geolocation response:', geoData);
                 
                 if (geoData.status === 'success') {
                     res.json({ 
                         success: true, 
                         state: geoData.regionName,
                         city: geoData.city,
-                        country: geoData.country
+                        country: geoData.country,
+                        latitude: geoData.lat,
+                        longitude: geoData.lon,
+                        detected: true,
+                        ip: userIP
                     });
                     return;
                 }
@@ -80,13 +92,15 @@ app.post('/api/detect-location', async (req, res) => {
             }
         }
         
-        // Default fallback
+        // Default fallback - but don't assume Washington anymore
+        console.log('Using location fallback');
         res.json({ 
             success: true, 
-            state: 'Washington', 
-            city: 'Seattle',
+            state: 'United States', 
+            city: 'Your Area',
             country: 'United States',
-            detected: false // Indicates this is a fallback
+            detected: false,
+            ip: userIP
         });
         
     } catch (error) {
@@ -94,7 +108,8 @@ app.post('/api/detect-location', async (req, res) => {
         res.json({ 
             success: false, 
             state: 'United States', 
-            city: 'Your Area'
+            city: 'Your Area',
+            error: error.message
         });
     }
 });
@@ -275,211 +290,6 @@ Guidelines:
 Response:`;
 
     return prompt;
-}
-
-function generateResourcesForAreas(concerningAreas, location = 'Oregon') {
-    const resourceDatabase = {
-        financial: {
-            'Oregon': [
-                {
-                    title: "💰 Oregon Employment Department", 
-                    description: "File for unemployment benefits and access job search resources",
-                    url: "https://www.oregon.gov/employ/"
-                },
-                {
-                    title: "🏦 211info Oregon",
-                    description: "Connect with local emergency financial assistance programs", 
-                    url: "https://www.211info.org"
-                }
-            ],
-            'Washington': [
-                {
-                    title: "💰 Washington State Employment Security", 
-                    description: "File for unemployment benefits and job search assistance",
-                    url: "https://esd.wa.gov/"
-                },
-                {
-                    title: "🏦 Washington 211",
-                    description: "Find local financial assistance and emergency aid", 
-                    url: "https://wa211.org"
-                }
-            ],
-            'North Carolina': [
-                {
-                    title: "💰 NC Department of Commerce", 
-                    description: "Job search resources and unemployment assistance",
-                    url: "https://www.nccommerce.com/"
-                },
-                {
-                    title: "🏦 NC 211",
-                    description: "Connect with local financial assistance programs", 
-                    url: "https://www.nc211.org"
-                }
-            ]
-        },
-        occupational: {
-            'Oregon': [
-                {
-                    title: "💼 WorkSource Oregon",
-                    description: "Free career counseling, resume help, and job placement services",
-                    url: "https://www.worksourceoregon.org"
-                }
-            ],
-            'Washington': [
-                {
-                    title: "💼 WorkSource Washington",
-                    description: "Career services, job training, and employment resources",
-                    url: "https://www.worksourcewa.com"
-                }
-            ],
-            'North Carolina': [
-                {
-                    title: "💼 NCWorks",
-                    description: "Job search assistance and career development services",
-                    url: "https://www.ncworks.gov"
-                }
-            ]
-        },
-        emotional: {
-            'Oregon': [
-                {
-                    title: "🆘 Oregon Crisis & Suicide Lifeline",
-                    description: "Call 988 for immediate crisis support, available 24/7",
-                    url: "https://www.oregon.gov/oha/ph/preventionwellness/suicideprevention/"
-                },
-                {
-                    title: "🧠 NAMI Oregon",
-                    description: "Mental health support groups and educational resources",
-                    url: "https://namior.org"
-                }
-            ],
-            'Washington': [
-                {
-                    title: "🆘 Crisis Text Line",
-                    description: "Text HOME to 741741 for crisis support",
-                    url: "https://www.crisistextline.org"
-                },
-                {
-                    title: "🧠 NAMI Washington",
-                    description: "Mental health support and advocacy",
-                    url: "https://namiwashington.org"
-                }
-            ],
-            'North Carolina': [
-                {
-                    title: "🆘 NC Crisis Line",
-                    description: "Call 988 for immediate mental health crisis support",
-                    url: "https://www.ncdhhs.gov/about/department-initiatives/crisis-services"
-                },
-                {
-                    title: "🧠 NAMI North Carolina",
-                    description: "Mental health resources and support groups",
-                    url: "https://naminc.org"
-                }
-            ]
-        },
-        physical: {
-            'Oregon': [
-                {
-                    title: "🏥 Oregon Health Authority",
-                    description: "Find community health centers and healthcare resources",
-                    url: "https://www.oregon.gov/oha/"
-                }
-            ],
-            'Washington': [
-                {
-                    title: "🏥 Washington State Health Dept",
-                    description: "Community health resources and healthcare access",
-                    url: "https://www.doh.wa.gov/"
-                }
-            ],
-            'North Carolina': [
-                {
-                    title: "🏥 NC Dept of Health",
-                    description: "Public health resources and community health centers",
-                    url: "https://www.ncdhhs.gov/"
-                }
-            ]
-        },
-        social: {
-            'Oregon': [
-                {
-                    title: "👥 Oregon Support Groups",
-                    description: "Find local community and peer support groups",
-                    url: "https://www.oregon.gov/oha/hsd/amh/pages/recovery-support.aspx"
-                }
-            ],
-            'Washington': [
-                {
-                    title: "👥 Washington Recovery Support",
-                    description: "Peer support and recovery community resources",
-                    url: "https://www.hca.wa.gov/about-hca/behavioral-health-recovery"
-                }
-            ],
-            'North Carolina': [
-                {
-                    title: "👥 NC Peer Support",
-                    description: "Peer support services and community resources",
-                    url: "https://www.ncdhhs.gov/divisions/mental-health-developmental-disabilities-and-substance-abuse"
-                }
-            ]
-        }
-    };
-    
-    // National/universal resources as fallback
-    const nationalResources = {
-        financial: [
-            {
-                title: "📞 211 National",
-                description: "Call 2-1-1 for local financial assistance anywhere in the US", 
-                url: "https://www.211.org"
-            }
-        ],
-        emotional: [
-            {
-                title: "🆘 988 Suicide & Crisis Lifeline",
-                description: "Call or text 988 for mental health crisis support nationwide",
-                url: "https://988lifeline.org"
-            }
-        ],
-        occupational: [
-            {
-                title: "💼 CareerOneStop",
-                description: "Federal job search and career resources",
-                url: "https://www.careeronestop.org"
-            }
-        ]
-    };
-    
-    let resources = [];
-    concerningAreas.forEach(area => {
-        // Try to get state-specific resources first
-        if (resourceDatabase[area] && resourceDatabase[area][location]) {
-            resources.push(...resourceDatabase[area][location]);
-        }
-        // Fall back to national resources
-        else if (nationalResources[area]) {
-            resources.push(...nationalResources[area]);
-        }
-    });
-    
-    // Add general national resources if none found
-    if (resources.length === 0) {
-        resources = [
-            {
-                title: "📞 211 Information & Referral",
-                description: "Dial 2-1-1 for help finding local resources in your area", 
-                url: "https://www.211.org"
-            },
-            {
-                title: "🌟 Mental Health America",
-                description: "National mental health resources and support",
-                url: "https://www.mhanational.org"
-            }
-        ];
-    }
-    
-    return resources.slice(0, 4); // Limit to 4 resources
 }
 
 app.listen(PORT, () => {
