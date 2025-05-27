@@ -812,27 +812,27 @@
                 financial: 'financial situation', 
                 emotional: 'emotional well-being',
                 environmental: 'living environment',
-                social: 'relationships and social connections',
-                occupational: 'work or career',
-                intellectual: 'mental stimulation and learning',
-                spiritual: 'spiritual or philosophical well-being'
+                social: 'relationships',
+                occupational: 'work/career',
+                intellectual: 'mental stimulation',
+                spiritual: 'spiritual well-being'
             };
             
             if (concerns.length > 0) {
-                const concernArea = concerns[0][0];
-                const concernName = dimensionNames[concernArea];
-                
-                let question = `What's happening with your ${concernName} right now? I'd like to understand your specific situation so I can offer more helpful insights.`;
-                
-                if (concerns.length > 1) {
-                    question += ` Feel free to share about any of the areas you rated lower.`;
+                if (concerns.length === 1) {
+                    const concernName = dimensionNames[concerns[0][0]];
+                    return `What's going on with your ${concernName}? I'd like to understand your specific situation so I can offer more helpful support.`;
+                } else {
+                    const concernNames = concerns.map(([dim, rating]) => dimensionNames[dim]);
+                    const lastConcern = concernNames.pop();
+                    const concernList = concernNames.join(', ') + (concernNames.length > 0 ? ', and ' : '') + lastConcern;
+                    
+                    return `I see you're experiencing challenges with ${concernList}. What's happening in these areas of your life? Share whatever feels most important to you right now.`;
                 }
-                
-                return question;
             } else if (strengths.length > 0) {
-                return `What's been helping you maintain your wellness lately? I'd love to learn from what's working for you.`;
+                return `You seem to be doing well overall! What's been helping you maintain your wellness? I'd love to learn from what's working for you.`;
             } else {
-                return `What's happening in your life right now? Help me understand your current situation so I can offer better support.`;
+                return `Help me understand what's happening in your life right now. What would be most helpful for me to know about your current situation?`;
             }
         }
         
@@ -903,12 +903,115 @@
             // Check if we should search for resources
             const concerningRatings = Object.values(checkin.ratings).filter(r => r <= 2);
             if (concerningRatings.length > 0) {
-                console.log('Starting resource search...');
-                searchForResources(checkin);
+                console.log('Starting location detection and resource search...');
+                detectLocationAndSearchResources(checkin);
             } else {
                 console.log('No concerning ratings, adding Claude CTA immediately');
                 addClaudeCTA();
             }
+        }
+        
+        async function detectLocationAndSearchResources(checkin) {
+            try {
+                // First, detect location
+                console.log('🔍 Detecting location...');
+                const locationResponse = await fetch('/api/detect-location', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const locationData = await locationResponse.json();
+                console.log('📍 Location detected:', locationData);
+                
+                // Use detected location or fallback
+                const userCity = locationData.success ? locationData.city : 'Your City';
+                const userState = locationData.success ? locationData.state : 'Your State';
+                
+                // Show location confirmation BEFORE searching resources
+                if (locationData.detected) {
+                    await showLocationConfirmation(userCity, userState, checkin);
+                } else {
+                    // If no location detected, search with fallback
+                    searchResourcesForCheckin(checkin, userCity, userState);
+                }
+                
+            } catch (error) {
+                console.error('💥 Error in location detection:', error);
+                // Still add Claude CTA even if location fails
+                addClaudeCTA();
+            }
+        }
+        
+        async function showLocationConfirmation(detectedCity, detectedState, checkin) {
+            return new Promise((resolve) => {
+                const confirmationHtml = `
+                    <div id="locationConfirmation" style="background: #f0f4ff; border: 2px solid #5a4fcf; border-radius: 15px; padding: 20px; margin: 20px 0; text-align: center;">
+                        <div style="font-size: 16px; color: #333; margin-bottom: 15px;">
+                            📍 I'll search for local resources. I detected you in:
+                        </div>
+                        <div style="font-size: 18px; font-weight: 600; color: #5a4fcf; margin-bottom: 15px;">
+                            ${detectedCity}, ${detectedState}
+                        </div>
+                        <div style="display: flex; gap: 15px; justify-content: center; flex-wrap: wrap;">
+                            <button onclick="confirmLocation('${detectedCity}', '${detectedState}')" style="padding: 12px 24px; background: #28a745; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                ✓ That's Correct
+                            </button>
+                            <button onclick="showLocationInput()" style="padding: 12px 24px; background: #5a4fcf; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: 600;">
+                                📝 Enter Different Location
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                document.getElementById('responseContainer').insertAdjacentHTML('beforeend', confirmationHtml);
+                
+                // Store the resolve function globally so buttons can call it
+                window.locationConfirmationResolve = resolve;
+                window.currentCheckinForResources = checkin;
+            });
+        }
+        
+        function confirmLocation(city, state) {
+            console.log('✅ Location confirmed:', city, state);
+            document.getElementById('locationConfirmation').remove();
+            searchResourcesForCheckin(window.currentCheckinForResources, city, state);
+            window.locationConfirmationResolve();
+        }
+        
+        function showLocationInput() {
+            const inputHtml = `
+                <div style="background: white; padding: 15px; border-radius: 10px; margin-top: 15px;">
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
+                        <input type="text" id="manualCity" placeholder="Your City" style="flex: 1; min-width: 120px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px;">
+                        <input type="text" id="manualState" placeholder="State" style="flex: 1; min-width: 100px; padding: 10px; border: 1px solid #ddd; border-radius: 5px; font-size: 14px;">
+                        <button onclick="confirmManualLocation()" style="padding: 10px 20px; background: #5a4fcf; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: 600; white-space: nowrap;">
+                            Search Resources
+                        </button>
+                    </div>
+                    <div style="font-size: 12px; color: #666; margin-top: 8px; text-align: center;">
+                        Example: Vancouver, WA or Portland, OR
+                    </div>
+                </div>
+            `;
+            
+            document.getElementById('locationConfirmation').insertAdjacentHTML('beforeend', inputHtml);
+        }
+        
+        function confirmManualLocation() {
+            const city = document.getElementById('manualCity').value.trim();
+            const state = document.getElementById('manualState').value.trim();
+            
+            if (!city || !state) {
+                alert('Please enter both city and state');
+                return;
+            }
+            
+            console.log('✅ Manual location entered:', city, state);
+            document.getElementById('locationConfirmation').remove();
+            searchResourcesForCheckin(window.currentCheckinForResources, city, state);
+            window.locationConfirmationResolve();
         }
         
         function addClaudeCTA() {
@@ -946,36 +1049,14 @@
             `;
         }
         
-        async function searchForResources(checkin) {
-            // Identify which areas need resources
-            const concerningAreas = Object.entries(checkin.ratings)
-                .filter(([dim, rating]) => rating <= 2)
-                .map(([dim, rating]) => dim);
-            
-            if (concerningAreas.length === 0) {
-                console.log('No concerning areas found');
-                addClaudeCTA();
-                return;
-            }
-            
+        async function searchResourcesForCheckin(checkin, city, state) {
             try {
-                // Detect user location first
-                console.log('🔍 Detecting location...');
-                const locationResponse = await fetch('/api/detect-location', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
+                console.log('🔎 Searching contextual resources for:', city, state);
+                console.log('📝 User context:', checkin.context);
                 
-                const locationData = await locationResponse.json();
-                console.log('📍 Location detected:', locationData);
-                
-                // Use detected location or fallback
-                const userCity = locationData.success ? locationData.city : 'Your City';
-                const userState = locationData.success ? locationData.state : 'Your State';
-                
-                console.log('🔎 Searching resources for:', userCity, userState);
+                const concerningAreas = Object.entries(checkin.ratings)
+                    .filter(([dim, rating]) => rating <= 2)
+                    .map(([dim, rating]) => dim);
                 
                 const response = await fetch('/api/search-resources', {
                     method: 'POST',
@@ -984,14 +1065,16 @@
                     },
                     body: JSON.stringify({
                         concerningAreas: concerningAreas,
-                        city: userCity,
-                        state: userState,
-                        location: `${userCity}, ${userState}`
+                        city: city,
+                        state: state,
+                        location: `${city}, ${state}`,
+                        userContext: checkin.context || '', // Include actual user context
+                        userRatings: checkin.ratings
                     })
                 });
                 
                 const data = await response.json();
-                console.log('🎯 Resources found:', data);
+                console.log('🎯 Contextual resources found:', data);
                 
                 if (data.success && data.resources.length > 0) {
                     // Add resources to the response
@@ -1001,7 +1084,7 @@
                                 <span style="font-size: 24px;">🔍</span>
                                 <span>Resource Finder</span>
                             </div>
-                            <div class="response-text">I found some resources in ${userCity}, ${userState} that might help:</div>
+                            <div class="response-text">Based on what you shared, I found some resources in ${city}, ${state} that might help:</div>
                             <div class="resource-list">
                                 ${data.resources.map(resource => `
                                     <div class="resource-item" onclick="window.open('${resource.url}', '_blank')">
@@ -1014,22 +1097,16 @@
                     `;
                     
                     document.getElementById('responseContainer').insertAdjacentHTML('beforeend', resourcesHtml);
-                    console.log('✅ Resources added to page');
-                    
-                    // Always offer location verification since IP geolocation can be inaccurate
-                    if (locationData.detected) {
-                        console.log('📍 Showing location verification option');
-                        addLocationCorrection(userCity, userState);
-                    }
+                    console.log('✅ Contextual resources added to page');
                 } else {
-                    console.log('❌ No resources returned or API failed');
+                    console.log('❌ No contextual resources returned');
                 }
                 
                 // Always add Claude CTA at the end
                 addClaudeCTA();
                 
             } catch (error) {
-                console.error('💥 Error searching for resources:', error);
+                console.error('💥 Error searching contextual resources:', error);
                 // Still add Claude CTA even if resources fail
                 addClaudeCTA();
             }

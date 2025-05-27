@@ -117,58 +117,95 @@ app.post('/api/detect-location', async (req, res) => {
 // Web search endpoint for resources
 app.post('/api/search-resources', async (req, res) => {
     try {
-        const { concerningAreas, location, city, state } = req.body;
+        const { concerningAreas, location, city, state, userContext, userRatings } = req.body;
         
         // Create search queries for Claude to use
         const locationString = city && state ? `${city}, ${state}` : location || 'your area';
         
-        const searchQueries = concerningAreas.map(area => {
-            switch(area) {
-                case 'financial': 
-                    return `financial assistance programs ${locationString}`;
-                case 'occupational': 
-                    return `job search career services ${locationString}`;
-                case 'emotional': 
-                    return `mental health crisis support ${locationString}`;
-                case 'physical': 
-                    return `healthcare community health centers ${locationString}`;
-                case 'social': 
-                    return `support groups community resources ${locationString}`;
-                case 'environmental': 
-                    return `housing assistance ${locationString}`;
-                case 'intellectual': 
-                    return `adult education resources ${locationString}`;
-                case 'spiritual': 
-                    return `spiritual wellness resources ${locationString}`;
-                default: 
-                    return `wellness resources ${locationString}`;
-            }
-        });
+        // Use user's actual context to create more relevant searches
+        let contextualSearchTerms = [];
         
-        // Use Claude to search and format resources
-        const prompt = `You are a helpful resource finder. I need you to search for and provide specific, actionable resources for someone dealing with these concerns: ${concerningAreas.join(', ')}.
+        if (userContext && userContext.trim()) {
+            // Extract key terms from user's context for more relevant searches
+            const context = userContext.toLowerCase();
+            
+            // Look for specific situations mentioned
+            if (context.includes('job') || context.includes('unemploy') || context.includes('work')) {
+                contextualSearchTerms.push(`job search unemployment assistance ${locationString}`);
+            }
+            if (context.includes('money') || context.includes('financial') || context.includes('bills') || context.includes('rent')) {
+                contextualSearchTerms.push(`emergency financial assistance rent help ${locationString}`);
+            }
+            if (context.includes('storm') || context.includes('weather') || context.includes('flood') || context.includes('emergency')) {
+                contextualSearchTerms.push(`weather emergency assistance disaster relief ${locationString}`);
+            }
+            if (context.includes('housing') || context.includes('homeless') || context.includes('evict')) {
+                contextualSearchTerms.push(`housing assistance emergency shelter ${locationString}`);
+            }
+            if (context.includes('health') || context.includes('medical') || context.includes('doctor')) {
+                contextualSearchTerms.push(`community health centers medical assistance ${locationString}`);
+            }
+            if (context.includes('stress') || context.includes('anxiety') || context.includes('depress')) {
+                contextualSearchTerms.push(`mental health counseling support groups ${locationString}`);
+            }
+        }
+        
+        // If no contextual terms found, fall back to dimension-based searches
+        if (contextualSearchTerms.length === 0) {
+            contextualSearchTerms = concerningAreas.map(area => {
+                switch(area) {
+                    case 'financial': 
+                        return `financial assistance emergency aid ${locationString}`;
+                    case 'occupational': 
+                        return `job search career services ${locationString}`;
+                    case 'emotional': 
+                        return `mental health support counseling ${locationString}`;
+                    case 'physical': 
+                        return `healthcare community health centers ${locationString}`;
+                    case 'social': 
+                        return `support groups community resources ${locationString}`;
+                    case 'environmental': 
+                        return `housing assistance emergency shelter ${locationString}`;
+                    case 'intellectual': 
+                        return `adult education learning resources ${locationString}`;
+                    case 'spiritual': 
+                        return `spiritual wellness community support ${locationString}`;
+                    default: 
+                        return `wellness resources ${locationString}`;
+                }
+            });
+        }
+        
+        // Use Claude to search and format resources with user's specific context
+        const prompt = `You are a helpful resource finder. I need you to search for and provide specific, actionable resources for someone dealing with these specific concerns.
 
 Location: ${locationString}
 
-For each concerning area, find 1-2 specific resources (websites, phone numbers, local organizations) that would actually help someone in ${locationString}.
+What they told me: "${userContext || 'General wellness concerns'}"
 
-Format your response as a JSON array of resources like this:
+Areas they rated low (1-2/5): ${concerningAreas.join(', ')}
+
+Based on what they specifically shared with you, find 3-4 relevant resources that would actually help someone in ${locationString} with their specific situation.
+
+Focus on resources that connect to what they actually told you, not just generic categories.
+
+Format your response as a JSON array like this:
 [
   {
-    "title": "📞 Specific Organization Name",
-    "description": "Brief description of what they offer",
+    "title": "📞 Specific Organization Name", 
+    "description": "Brief description connecting to their specific situation",
     "url": "actual website URL"
   }
 ]
 
-Focus on:
-- Government services (unemployment, health departments, etc.)
-- 211 services for the area
-- Crisis lines (988, local crisis centers)
-- Local nonprofits and community organizations
+Prioritize:
+- Resources that address their specific context/situation
+- Local government services and 211 services
+- Crisis support if they mentioned urgent situations
+- Practical, actionable resources they can use immediately
 - National resources with local chapters
 
-Keep descriptions brief and actionable. Limit to 4 resources total.`;
+Keep descriptions brief and specific to their situation.`;
 
         const response = await fetch('https://api.anthropic.com/v1/messages', {
             method: 'POST',
@@ -205,15 +242,15 @@ Keep descriptions brief and actionable. Limit to 4 resources total.`;
             }
         } catch (parseError) {
             console.error('Error parsing Claude response:', parseError);
-            // Fallback to basic national resources
+            // Fallback to basic local resources
             resources = [
                 {
                     title: "📞 211 Information & Referral",
-                    description: `Call 2-1-1 for local help in ${locationString}`,
+                    description: `Call 2-1-1 for local help in ${locationString} with your specific situation`,
                     url: "https://www.211.org"
                 },
                 {
-                    title: "🆘 988 Crisis Lifeline",
+                    title: "🆘 988 Crisis Support",
                     description: "Call or text 988 for mental health crisis support",
                     url: "https://988lifeline.org"
                 }
