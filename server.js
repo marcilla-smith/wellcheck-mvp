@@ -72,10 +72,63 @@ app.post('/api/detect-location', async (req, res) => {
     }
 });
 
+// NEW: Preliminary insights endpoint (called before user adds context)
+app.post('/api/preliminary-insights', async (req, res) => {
+    try {
+        const { ratings, userHistory } = req.body;
+        
+        console.log('Getting preliminary insights for ratings:', ratings);
+        
+        const prompt = createPreliminaryPrompt(ratings, userHistory);
+        
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': process.env.CLAUDE_API_KEY,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 400, // Shorter response for preliminary
+                messages: [{
+                    role: 'user',
+                    content: prompt
+                }]
+            })
+        });
+        
+        if (!response.ok) {
+            console.error('Claude API error:', response.status, await response.text());
+            throw new Error(`Claude API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        console.log('Preliminary insights response received');
+        
+        res.json({ 
+            success: true, 
+            response: data.content[0].text 
+        });
+        
+    } catch (error) {
+        console.error('Error getting preliminary insights:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to get preliminary insights' 
+        });
+    }
+});
+
 // Extended conversation endpoint (keep users in-app)
 app.post('/api/continue-conversation', async (req, res) => {
     try {
         const { initialResponse, userQuestion, checkinData } = req.body;
+        
+        console.log('Continue conversation request:', {
+            userQuestion: userQuestion,
+            hasCheckinData: !!checkinData
+        });
         
         const prompt = `You are continuing a wellness conversation. Here's the context:
 
@@ -114,10 +167,13 @@ Response:`;
         });
         
         if (!response.ok) {
+            console.error('Claude API error in continue conversation:', response.status, await response.text());
             throw new Error(`Claude API error: ${response.status}`);
         }
         
         const data = await response.json();
+        console.log('Continue conversation response received');
+        
         res.json({ 
             success: true, 
             response: data.content[0].text 
@@ -132,10 +188,17 @@ Response:`;
     }
 });
 
-// Claude API endpoint - COMPLETELY REWRITTEN 
+// Claude API endpoint - Main wellness response
 app.post('/api/wellness-response', async (req, res) => {
     try {
         const { checkin, userHistory, preliminaryInsights } = req.body;
+        
+        console.log('Getting wellness response for checkin:', {
+            hasRatings: !!checkin.ratings,
+            hasContext: !!checkin.context,
+            contextLength: checkin.context?.length || 0
+        });
+        
         const prompt = createWellnessPrompt(checkin, userHistory, preliminaryInsights);
         
         const response = await fetch('https://api.anthropic.com/v1/messages', {
@@ -156,10 +219,13 @@ app.post('/api/wellness-response', async (req, res) => {
         });
         
         if (!response.ok) {
+            console.error('Claude API error in wellness response:', response.status, await response.text());
             throw new Error(`Claude API error: ${response.status}`);
         }
         
         const data = await response.json();
+        console.log('Wellness response received');
+        
         res.json({ 
             success: true, 
             response: data.content[0].text 
@@ -178,6 +244,13 @@ app.post('/api/wellness-response', async (req, res) => {
 app.post('/api/search-resources', async (req, res) => {
     try {
         const { concerningAreas, location, city, state, userContext, userRatings } = req.body;
+        
+        console.log('Searching resources for:', {
+            location: location,
+            concerningAreas: concerningAreas,
+            hasUserContext: !!userContext,
+            contextLength: userContext?.length || 0
+        });
         
         // Create search queries for Claude to use
         const locationString = city && state ? `${city}, ${state}` : location || 'your area';
@@ -288,6 +361,7 @@ Keep descriptions brief and specific to their situation.`;
         });
         
         if (!response.ok) {
+            console.error('Claude API error in resource search:', response.status, await response.text());
             throw new Error(`Claude API error: ${response.status}`);
         }
         
@@ -320,6 +394,8 @@ Keep descriptions brief and specific to their situation.`;
             ];
         }
         
+        console.log('Found resources:', resources.length);
+        
         res.json({ 
             success: true, 
             resources: resources.slice(0, 4) // Limit to 4
@@ -347,7 +423,47 @@ Keep descriptions brief and specific to their situation.`;
     }
 });
 
-// COMPLETELY REWRITTEN PROMPT FUNCTION - NO RECOVERY LANGUAGE
+// NEW: Function to create preliminary prompt
+function createPreliminaryPrompt(ratings, userHistory = {}) {
+    const dimensionNames = {
+        physical: 'physical health',
+        financial: 'financial situation', 
+        emotional: 'emotional well-being',
+        environmental: 'living environment',
+        social: 'relationships',
+        occupational: 'work/career',
+        intellectual: 'mental stimulation',
+        spiritual: 'spiritual well-being'
+    };
+    
+    const ratedDimensions = Object.entries(ratings);
+    const concerns = ratedDimensions.filter(([dim, rating]) => rating <= 2);
+    const strengths = ratedDimensions.filter(([dim, rating]) => rating >= 4);
+    const ratedCount = ratedDimensions.length;
+    
+    let prompt = `You are a supportive wellness companion. A user just completed their daily check-in, rating ${ratedCount} out of 8 wellness dimensions.
+
+THEIR RATINGS:
+${ratedDimensions.map(([dim, rating]) => `${dimensionNames[dim]}: ${rating}/5`).join('\n')}
+
+CRITICAL INSTRUCTIONS:
+- Acknowledge what you notice from their ratings in a warm, personalized way
+- Be specific about both challenges AND strengths you see
+- Do NOT make assumptions about why they rated things low - you don't know the reasons yet
+- Simply acknowledge the ratings without assuming causes or existing conditions
+- Keep it brief (2-3 sentences max)  
+- Sound like a caring friend who's paying attention to what they told you
+- Do NOT ask questions yet - just acknowledge what you see
+- End with expressing interest in learning more about their situation
+
+TONE: Warm, attentive, specific to their actual ratings, but don't assume causes
+
+Response:`;
+
+    return prompt;
+}
+
+// Main wellness prompt function - NO RECOVERY LANGUAGE
 function createWellnessPrompt(checkin, userHistory = {}, preliminaryInsights = '') {
     const { ratings, context } = checkin;
     const dimensionNames = {
@@ -382,7 +498,7 @@ RESPONSE REQUIREMENTS:
 - Do NOT say "hello" or introduce yourself again
 - Do NOT repeat observations you already made in preliminary insights  
 - Respond specifically to what they shared about their situation
-- Reference their specific circumstances (rabbi argument, weight concerns, job issues, etc.)
+- Reference their specific circumstances (snow/Door Dash, rabbi argument, weight concerns, job issues, etc.)
 - Provide practical, relevant guidance for their actual situation
 - Be conversational and supportive, not clinical or generic
 

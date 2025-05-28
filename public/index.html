@@ -375,6 +375,15 @@
             font-size: 12px;
             margin-bottom: 10px;
         }
+
+        .error-message {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 15px;
+            margin: 15px 0;
+            color: #856404;
+        }
     </style>
 </head>
 <body>
@@ -563,10 +572,13 @@
             <div class="claude-response">
                 <div class="claude-avatar">
                     <span style="font-size: 24px;">💡</span>
-                    <span>WellCheck Intelligent Assistance</span>
+                    <span>WellCheck Personalized Assistance</span>
                 </div>
                 <div class="response-text" id="followupQuestion">
-                    I'd like to understand what's behind your ratings today. Could you share what's happening in your life right now?
+                    <div class="loading-indicator">
+                        <div class="spinner"></div>
+                        <span>Understanding your check-in...</span>
+                    </div>
                 </div>
                 
                 <div style="background: white; border-radius: 10px; padding: 15px; margin: 15px 0;">
@@ -595,7 +607,7 @@
             <div id="loadingContainer" class="claude-response">
                 <div class="claude-avatar">
                     <span style="font-size: 24px;">💡</span>
-                    <span>WellCheck Intelligent Assistance</span>
+                    <span>WellCheck Personalized Assistance</span>
                 </div>
                 <div class="loading-indicator">
                     <div class="spinner"></div>
@@ -757,49 +769,59 @@
                 return;
             }
             
-            // First, show preliminary insights
-            showPreliminaryInsights();
+            // Show followup screen and get preliminary insights
+            showScreen('followupScreen');
+            getPreliminaryInsights();
         }
         
-        function showPreliminaryInsights() {
-            const ratedCount = Object.keys(ratings).length;
-            const concerns = Object.entries(ratings).filter(([dim, rating]) => rating <= 2);
-            const strengths = Object.entries(ratings).filter(([dim, rating]) => rating >= 4);
-            
-            const dimensionNames = {
-                physical: 'physical health',
-                financial: 'financial situation', 
-                emotional: 'emotional well-being',
-                environmental: 'living environment',
-                social: 'relationships',
-                occupational: 'work/career',
-                intellectual: 'mental stimulation',
-                spiritual: 'spiritual well-being'
-            };
-            
-            let insightText = `Thanks for rating ${ratedCount} dimension${ratedCount > 1 ? 's' : ''}. `;
-            
-            if (concerns.length > 0) {
-                const concernNames = concerns.map(([dim, rating]) => dimensionNames[dim]).join(' and ');
-                insightText += `I notice you're experiencing some challenges with ${concernNames}. `;
+        // NEW: Get Claude-powered preliminary insights
+        async function getPreliminaryInsights() {
+            try {
+                console.log('🎯 Getting preliminary insights from Claude API...');
+                
+                const response = await fetch('/api/preliminary-insights', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        ratings: ratings,
+                        userHistory: userHistory
+                    })
+                });
+                
+                console.log('📡 Preliminary insights API response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                console.log('✅ Preliminary insights received:', data.success);
+                
+                if (data.success) {
+                    document.getElementById('followupQuestion').innerHTML = `
+                        <div style="margin-bottom: 20px; padding: 15px; background: #f0f4ff; border-radius: 10px; border-left: 4px solid #5a4fcf;">
+                            ${data.response.replace(/\n/g, '<br>')}
+                        </div>
+                        <div>What's happening in your life right now that's contributing to these feelings? I'd love to understand your specific situation.</div>
+                    `;
+                } else {
+                    throw new Error(data.error || 'API returned success: false');
+                }
+                
+            } catch (error) {
+                console.error('💥 Error getting preliminary insights:', error);
+                
+                // Show error message instead of fallback
+                document.getElementById('followupQuestion').innerHTML = `
+                    <div class="error-message">
+                        <div style="font-weight: 600; margin-bottom: 5px;">⚠️ Connection Issue</div>
+                        <div style="font-size: 14px;">I'm having trouble getting personalized insights right now. Please share what's happening in your life and I'll do my best to help you.</div>
+                    </div>
+                    <div style="margin-top: 15px;">What's happening in your life right now that's contributing to how you're feeling today?</div>
+                `;
             }
-            
-            if (strengths.length > 0) {
-                const strengthNames = strengths.map(([dim, rating]) => dimensionNames[dim]).join(' and ');
-                insightText += `It's good to see your ${strengthNames} ${strengths.length > 1 ? 'are' : 'is'} going well. `;
-            }
-            
-            insightText += `I'd love to understand more about your situation to give you better support.`;
-            
-            // Update the follow-up screen with preliminary insights
-            document.getElementById('followupQuestion').innerHTML = `
-                <div style="margin-bottom: 20px; padding: 15px; background: #f0f4ff; border-radius: 10px; border-left: 4px solid #5a4fcf;">
-                    ${insightText}
-                </div>
-                ${generateFollowupQuestionText()}
-            `;
-            
-            showScreen('followupScreen');
         }
         
         function generateFollowupQuestionText() {
@@ -833,12 +855,6 @@
             } else {
                 return `Help me understand what's happening in your life right now. What would be most helpful for me to know about your current situation?`;
             }
-        }
-        
-        function generateFollowupQuestion() {
-            // This function is now simplified since we handle it in showPreliminaryInsights
-            const questionText = generateFollowupQuestionText();
-            document.getElementById('followupPrompt').textContent = 'Share your situation';
         }
         
         function submitWithContext() {
@@ -890,12 +906,12 @@
             // Hide loading
             document.getElementById('loadingContainer').style.display = 'none';
             
-            // Create response HTML (without Claude CTA)
+            // Create response HTML
             const responseHtml = `
                 <div class="claude-response">
                     <div class="claude-avatar">
                         <span style="font-size: 24px;">💡</span>
-                        <span>WellCheck Intelligent Assistance</span>
+                        <span>WellCheck Personalized Assistance</span>
                     </div>
                     <div class="response-text">${response.replace(/\n/g, '<br>')}</div>
                 </div>
@@ -922,19 +938,14 @@
                 <div class="claude-response">
                     <div class="claude-avatar">
                         <span style="font-size: 24px;">💡</span>
-                        <span>WellCheck Intelligent Assistance</span>
+                        <span>WellCheck Personalized Assistance</span>
                     </div>
                     <div class="response-text">
                         I'm having trouble connecting right now, but I want you to know that completing your check-in is still valuable. 
                         Keep tracking your wellness - every day of awareness counts in your personal growth journey. 💪
                     </div>
                 </div>
-                
-                <div class="claude-cta">
-                    <h3>💬 Continue the Conversation</h3>
-                    <p>While I'm reconnecting, you can chat with Claude directly for immediate wellness support.</p>
-                    <a href="https://claude.ai" target="_blank" class="claude-link">Chat with Claude →</a>
-                </div>
+                ${addClaudeCTA()}
             `;
         }
         
@@ -1076,7 +1087,7 @@
                         city: city,
                         state: state,
                         location: `${city}, ${state}`,
-                        userContext: checkin.context || '', // Include actual user context
+                        userContext: checkin.context || '',
                         userRatings: checkin.ratings
                     })
                 });
@@ -1134,7 +1145,7 @@
                     <p>Have more questions about your wellness insights? Keep the conversation going right here.</p>
                     <div style="background: white; border-radius: 10px; padding: 15px; margin: 15px 0;">
                         <textarea 
-                            id="followupQuestion" 
+                            id="continueConversationInput" 
                             placeholder="Ask me anything about your wellness, get advice, or explore these insights further..." 
                             style="width: 100%; height: 80px; padding: 12px; border: 1px solid #ddd; border-radius: 8px; font-size: 16px; font-family: inherit; resize: vertical; box-sizing: border-box;">
                         </textarea>
@@ -1142,10 +1153,8 @@
                             Continue Conversation →
                         </button>
                     </div>
-                    <div style="text-align: center; margin-top: 10px;">
-                        <a href="https://claude.ai" target="_blank" style="color: #666; font-size: 14px; text-decoration: none;">
-                            Or chat with Claude directly at claude.ai
-                        </a>
+                    <div style="text-align: center; margin-top: 10px; color: #666; font-size: 14px;">
+                        Keep exploring your wellness insights
                     </div>
                 </div>
             `;
@@ -1154,7 +1163,7 @@
         }
         
         async function continueConversation() {
-            const userQuestion = document.getElementById('followupQuestion').value.trim();
+            const userQuestion = document.getElementById('continueConversationInput').value.trim();
             
             if (!userQuestion) {
                 alert('Please enter a question to continue the conversation');
@@ -1168,6 +1177,8 @@
             button.innerHTML = '<div class="spinner" style="width: 16px; height: 16px; display: inline-block; margin-right: 8px;"></div>Thinking...';
             
             try {
+                console.log('🤖 Continuing conversation with:', userQuestion);
+                
                 // Get the original response text for context
                 const originalResponse = document.querySelector('.claude-response .response-text').textContent;
                 
@@ -1183,7 +1194,14 @@
                     })
                 });
                 
+                console.log('📡 API Response status:', response.status);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                
                 const data = await response.json();
+                console.log('✅ Continue conversation response:', data);
                 
                 if (data.success) {
                     // Add the continued conversation to the page
@@ -1191,7 +1209,7 @@
                         <div class="claude-response" style="margin-top: 20px; border-left: 4px solid #5a4fcf;">
                             <div class="claude-avatar">
                                 <span style="font-size: 24px;">💡</span>
-                                <span>WellCheck Intelligent Assistance</span>
+                                <span>WellCheck Personalized Assistance</span>
                             </div>
                             <div style="font-size: 14px; color: #666; margin-bottom: 10px; font-style: italic;">
                                 You asked: "${userQuestion}"
@@ -1205,7 +1223,7 @@
                     ctaElement.insertAdjacentHTML('beforebegin', conversationHtml);
                     
                     // Clear the input and reset button
-                    document.getElementById('followupQuestion').value = '';
+                    document.getElementById('continueConversationInput').value = '';
                     button.disabled = false;
                     button.textContent = originalText;
                     
@@ -1214,8 +1232,19 @@
                 }
                 
             } catch (error) {
-                console.error('Error continuing conversation:', error);
-                alert('Sorry, there was an error continuing the conversation. Please try again.');
+                console.error('💥 Error continuing conversation:', error);
+                
+                // Show user-friendly error
+                const errorHtml = `
+                    <div class="error-message" style="margin-top: 15px;">
+                        <div style="font-weight: 600; margin-bottom: 5px;">⚠️ Connection Issue</div>
+                        <div style="font-size: 14px;">I'm having trouble continuing the conversation right now. Please try again in a moment.</div>
+                    </div>
+                `;
+                
+                const ctaElement = document.querySelector('.claude-cta');
+                ctaElement.insertAdjacentHTML('beforebegin', errorHtml);
+                
                 button.disabled = false;
                 button.textContent = originalText;
             }
