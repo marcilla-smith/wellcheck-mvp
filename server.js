@@ -11,48 +11,6 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public')); // Serve frontend files
 
-// Claude API endpoint
-app.post('/api/wellness-response', async (req, res) => {
-    try {
-        const { checkin, userHistory } = req.body;
-        const prompt = createWellnessPrompt(checkin, userHistory);
-        
-        const response = await fetch('https://api.anthropic.com/v1/messages', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'x-api-key': process.env.CLAUDE_API_KEY,
-                'anthropic-version': '2023-06-01'
-            },
-            body: JSON.stringify({
-                model: 'claude-sonnet-4-20250514',
-                max_tokens: 1000,
-                messages: [{
-                    role: 'user',
-                    content: prompt
-                }]
-            })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Claude API error: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        res.json({ 
-            success: true, 
-            response: data.content[0].text 
-        });
-        
-    } catch (error) {
-        console.error('Error calling Claude API:', error);
-        res.status(500).json({ 
-            success: false, 
-            error: 'Failed to get wellness response' 
-        });
-    }
-});
-
 // Location detection endpoint
 app.post('/api/detect-location', async (req, res) => {
     try {
@@ -114,6 +72,108 @@ app.post('/api/detect-location', async (req, res) => {
     }
 });
 
+// Extended conversation endpoint (keep users in-app)
+app.post('/api/continue-conversation', async (req, res) => {
+    try {
+        const { initialResponse, userQuestion, checkinData } = req.body;
+        
+        const prompt = `You are continuing a wellness conversation. Here's the context:
+
+PREVIOUS CONVERSATION:
+Initial wellness response: "${initialResponse}"
+User's follow-up question: "${userQuestion}"
+
+USER'S ORIGINAL CHECK-IN:
+${JSON.stringify(checkinData, null, 2)}
+
+Continue this conversation naturally. Do NOT restart or introduce yourself again. Respond directly to their follow-up question while referencing the context you already established.
+
+Keep responses:
+- Conversational and helpful
+- Specific to their situation
+- Brief (2-3 paragraphs max)
+- Focused on practical guidance
+
+Response:`;
+
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': process.env.CLAUDE_API_KEY,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 800,
+                messages: [{
+                    role: 'user',
+                    content: prompt
+                }]
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Claude API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        res.json({ 
+            success: true, 
+            response: data.content[0].text 
+        });
+        
+    } catch (error) {
+        console.error('Error in extended conversation:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to continue conversation' 
+        });
+    }
+});
+
+// Claude API endpoint - COMPLETELY REWRITTEN 
+app.post('/api/wellness-response', async (req, res) => {
+    try {
+        const { checkin, userHistory, preliminaryInsights } = req.body;
+        const prompt = createWellnessPrompt(checkin, userHistory, preliminaryInsights);
+        
+        const response = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'x-api-key': process.env.CLAUDE_API_KEY,
+                'anthropic-version': '2023-06-01'
+            },
+            body: JSON.stringify({
+                model: 'claude-sonnet-4-20250514',
+                max_tokens: 1000,
+                messages: [{
+                    role: 'user',
+                    content: prompt
+                }]
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Claude API error: ${response.status}`);
+        }
+        
+        const data = await response.json();
+        res.json({ 
+            success: true, 
+            response: data.content[0].text 
+        });
+        
+    } catch (error) {
+        console.error('Error calling Claude API:', error);
+        res.status(500).json({ 
+            success: false, 
+            error: 'Failed to get wellness response' 
+        });
+    }
+});
+
 // Web search endpoint for resources
 app.post('/api/search-resources', async (req, res) => {
     try {
@@ -142,11 +202,14 @@ app.post('/api/search-resources', async (req, res) => {
             if (context.includes('housing') || context.includes('homeless') || context.includes('evict')) {
                 contextualSearchTerms.push(`housing assistance emergency shelter ${locationString}`);
             }
-            if (context.includes('health') || context.includes('medical') || context.includes('doctor')) {
-                contextualSearchTerms.push(`community health centers medical assistance ${locationString}`);
+            if (context.includes('health') || context.includes('medical') || context.includes('doctor') || context.includes('weight') || context.includes('fat')) {
+                contextualSearchTerms.push(`weight loss programs medical weight management ${locationString}`);
             }
             if (context.includes('stress') || context.includes('anxiety') || context.includes('depress')) {
                 contextualSearchTerms.push(`mental health counseling support groups ${locationString}`);
+            }
+            if (context.includes('rabbi') || context.includes('church') || context.includes('spiritual') || context.includes('faith')) {
+                contextualSearchTerms.push(`spiritual counseling faith community support ${locationString}`);
             }
         }
         
@@ -284,8 +347,9 @@ Keep descriptions brief and specific to their situation.`;
     }
 });
 
-function createWellnessPrompt(checkin, userHistory = {}) {
-    const { ratings } = checkin;
+// COMPLETELY REWRITTEN PROMPT FUNCTION - NO RECOVERY LANGUAGE
+function createWellnessPrompt(checkin, userHistory = {}, preliminaryInsights = '') {
+    const { ratings, context } = checkin;
     const dimensionNames = {
         physical: 'Physical',
         financial: 'Financial', 
@@ -297,32 +361,33 @@ function createWellnessPrompt(checkin, userHistory = {}) {
         spiritual: 'Spiritual'
     };
     
-    // Find concerning areas (rated 1-2)
-    const concerns = Object.entries(ratings)
-        .filter(([dim, rating]) => rating <= 2)
-        .map(([dim, rating]) => `${dimensionNames[dim]}: ${rating}/5`);
-    
-    // Get historical context
+    // Create ratings summary
+    const ratedDimensions = Object.entries(ratings);
+    const concerns = ratedDimensions.filter(([dim, rating]) => rating <= 2);
+    const strengths = ratedDimensions.filter(([dim, rating]) => rating >= 4);
+    const unratedDimensions = Object.keys(dimensionNames).filter(dim => !ratings[dim]);
     const recentCheckins = userHistory.checkins?.slice(-7) || [];
-    const hasHistory = recentCheckins.length > 1;
     
-    let prompt = `You are a compassionate wellness companion for someone in recovery. Respond with empathy and understanding.
+    let prompt = `You are a wellness companion continuing a conversation. You already gave preliminary insights, now provide deeper support.
 
-Today's wellness check-in:
-${Object.entries(ratings).map(([dim, rating]) => `${dimensionNames[dim]}: ${rating}/5`).join('\n')}
+CONTEXT: You already acknowledged their ratings and said: "${preliminaryInsights}"
 
-${concerns.length > 0 ? `Areas of concern (rated 1-2): ${concerns.join(', ')}` : 'All dimensions rated 3 or higher - doing well overall!'}
+TODAY'S SPECIFIC SITUATION:
+What they told you: "${context || 'No additional details provided'}"
 
-${hasHistory ? `This person has been tracking for ${recentCheckins.length} days.` : 'This is a new user starting their wellness journey.'}
+Ratings given: ${ratedDimensions.map(([dim, rating]) => `${dimensionNames[dim]}: ${rating}/5`).join(', ')}
+${concerns.length > 0 ? `Areas needing support: ${concerns.map(([dim, rating]) => dimensionNames[dim]).join(', ')}` : ''}
 
-Guidelines:
-- Be warm and supportive, never judgmental
-- If there are concerning ratings (1-2), acknowledge them specifically  
-- Offer encouragement for areas going well (4-5)
-- Keep response conversational and brief (2-3 paragraphs max)
-- Use recovery-friendly language (journey, progress, one day at a time)
-- End with encouragement
-- Be trauma-informed and avoid toxic positivity
+RESPONSE REQUIREMENTS:
+- Do NOT say "hello" or introduce yourself again
+- Do NOT repeat observations you already made in preliminary insights  
+- Respond specifically to what they shared about their situation
+- Reference their specific circumstances (rabbi argument, weight concerns, job issues, etc.)
+- Provide practical, relevant guidance for their actual situation
+- Be conversational and supportive, not clinical or generic
+
+LENGTH: 2 paragraphs maximum
+TONE: Supportive friend who's been listening, not a first-time meeting
 
 Response:`;
 

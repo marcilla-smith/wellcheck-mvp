@@ -1,7 +1,7 @@
 {
   "name": "wellcheck-mvp",
   "version": "1.0.0",
-  "description": "WellCheck - Daily Wellness Check-in App for Recovery Communities",
+  "description": "WellCheck - Daily Wellness Check-in App for General Wellness and Self-Improvement",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -21,9 +21,9 @@
   },
   "keywords": [
     "wellness",
-    "recovery",
+    "self-improvement",
     "mental-health",
-    "claude-ai",
+    "intelligent-assistance",
     "samhsa"
   ],
   "author": "Marcilla Smith",
