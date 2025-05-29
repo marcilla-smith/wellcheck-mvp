@@ -136,6 +136,59 @@
             gap: 10px;
             font-weight: 600;
             color: #333;
+            flex: 1;
+        }
+        
+        .info-icon {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            border: 1px solid #5a4fcf;
+            color: #5a4fcf;
+            font-size: 12px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            flex-shrink: 0;
+        }
+        
+        .info-icon:hover {
+            background: #5a4fcf;
+            color: white;
+        }
+        
+        .tooltip {
+            position: absolute;
+            background: #333;
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: normal;
+            max-width: 280px;
+            z-index: 1000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            line-height: 1.4;
+            display: none;
+        }
+        
+        .tooltip::after {
+            content: '';
+            position: absolute;
+            top: -5px;
+            left: 20px;
+            width: 0;
+            height: 0;
+            border-left: 5px solid transparent;
+            border-right: 5px solid transparent;
+            border-bottom: 5px solid #333;
+        }
+        
+        .tooltip.show {
+            display: block;
         }
         
         .dimension-icon {
@@ -375,7 +428,9 @@
         <!-- Screen 1: Login/Register -->
         <div class="screen active" id="authScreen">
             <div class="header">
-                <h1>VYBIN</h1>
+                <h1 style="font-weight: 700; font-family: system-ui, sans-serif;">
+                    <span style="color: #28a745;">V</span><span style="color: #5a4fcf;">YBIN</span>
+                </h1>
                 <p>Your daily wellness companion</p>
             </div>
             
@@ -419,6 +474,7 @@
                             <span class="dimension-icon">💪</span>
                             <span>Physical</span>
                         </div>
+                        <span class="info-icon" onclick="showTooltip(event, 'physical')">i</span>
                     </div>
                     <div class="rating-container">
                         <button class="rating-button" onclick="setRating('physical', 1, this)">1</button>
@@ -435,6 +491,7 @@
                             <span class="dimension-icon">💰</span>
                             <span>Financial</span>
                         </div>
+                        <span class="info-icon" onclick="showTooltip(event, 'financial')">i</span>
                     </div>
                     <div class="rating-container">
                         <button class="rating-button" onclick="setRating('financial', 1, this)">1</button>
@@ -451,6 +508,7 @@
                             <span class="dimension-icon">❤️</span>
                             <span>Emotional</span>
                         </div>
+                        <span class="info-icon" onclick="showTooltip(event, 'emotional')">i</span>
                     </div>
                     <div class="rating-container">
                         <button class="rating-button" onclick="setRating('emotional', 1, this)">1</button>
@@ -467,6 +525,7 @@
                             <span class="dimension-icon">🏡</span>
                             <span>Environmental</span>
                         </div>
+                        <span class="info-icon" onclick="showTooltip(event, 'environmental')">i</span>
                     </div>
                     <div class="rating-container">
                         <button class="rating-button" onclick="setRating('environmental', 1, this)">1</button>
@@ -483,6 +542,7 @@
                             <span class="dimension-icon">👥</span>
                             <span>Social</span>
                         </div>
+                        <span class="info-icon" onclick="showTooltip(event, 'social')">i</span>
                     </div>
                     <div class="rating-container">
                         <button class="rating-button" onclick="setRating('social', 1, this)">1</button>
@@ -499,6 +559,7 @@
                             <span class="dimension-icon">💼</span>
                             <span>Occupational</span>
                         </div>
+                        <span class="info-icon" onclick="showTooltip(event, 'occupational')">i</span>
                     </div>
                     <div class="rating-container">
                         <button class="rating-button" onclick="setRating('occupational', 1, this)">1</button>
@@ -515,6 +576,7 @@
                             <span class="dimension-icon">🧠</span>
                             <span>Intellectual</span>
                         </div>
+                        <span class="info-icon" onclick="showTooltip(event, 'intellectual')">i</span>
                     </div>
                     <div class="rating-container">
                         <button class="rating-button" onclick="setRating('intellectual', 1, this)">1</button>
@@ -531,6 +593,7 @@
                             <span class="dimension-icon">✨</span>
                             <span>Spiritual</span>
                         </div>
+                        <span class="info-icon" onclick="showTooltip(event, 'spiritual')">i</span>
                     </div>
                     <div class="rating-container">
                         <button class="rating-button" onclick="setRating('spiritual', 1, this)">1</button>
@@ -610,6 +673,63 @@
         let userHistory = {};
         let userData = {}; // In-memory user storage
         let currentCheckin = null; // Store current check-in data
+        
+        // Tooltip functionality
+        const dimensionDefinitions = {
+            physical: "Your body's health - including exercise, nutrition, sleep, medical care, and managing physical symptoms or conditions.",
+            financial: "Your economic wellness and relationship with money - having resources to meet your needs and feeling secure about your financial situation.",
+            emotional: "Your ability to express feelings, enjoy life, adjust to emotional challenges, and cope with stress and traumatic experiences.",
+            environmental: "Feeling physically safe in your surroundings - having access to clean air, food, water, and living in safe, clean spaces both at home and in your community.",
+            social: "Having relationships with friends, family, and community - connecting with others and having an interest in the needs of others.",
+            occupational: "Finding personal satisfaction and meaning in your work, volunteer activities, or daily productive activities that contribute to society.",
+            intellectual: "Engaging in mentally stimulating activities - learning new things, being creative, and keeping your mind active and challenged.",
+            spiritual: "Having a sense of meaning, purpose, and connection to something greater than yourself - this may or may not include religious beliefs."
+        };
+        
+        let currentTooltip = null;
+        
+        function showTooltip(event, dimension) {
+            // Prevent event bubbling
+            event.stopPropagation();
+            
+            // Remove any existing tooltip
+            hideTooltip();
+            
+            // Create new tooltip
+            const tooltip = document.createElement('div');
+            tooltip.className = 'tooltip show';
+            tooltip.textContent = dimensionDefinitions[dimension];
+            
+            document.body.appendChild(tooltip);
+            
+            // Position tooltip
+            const rect = event.target.getBoundingClientRect();
+            tooltip.style.left = Math.max(10, rect.left - 140) + 'px';
+            tooltip.style.top = (rect.bottom + 10) + 'px';
+            
+            // Adjust if tooltip goes off screen
+            const tooltipRect = tooltip.getBoundingClientRect();
+            if (tooltipRect.right > window.innerWidth - 10) {
+                tooltip.style.left = (window.innerWidth - tooltipRect.width - 10) + 'px';
+            }
+            
+            currentTooltip = tooltip;
+            
+            // Hide tooltip after 5 seconds or on any click elsewhere
+            setTimeout(hideTooltip, 5000);
+            
+            // Add click listener to document to hide tooltip, but delay slightly
+            setTimeout(() => {
+                document.addEventListener('click', hideTooltip, { once: true });
+            }, 100);
+        }
+        
+        function hideTooltip() {
+            if (currentTooltip) {
+                currentTooltip.remove();
+                currentTooltip = null;
+            }
+        }
         
         // Initialize app
         document.addEventListener('DOMContentLoaded', function() {
