@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>WellCheck - Daily Wellness Check-in</title>
+    <title>VYBIN - Daily Wellness Check-in</title>
     <style>
         body {
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -299,22 +299,6 @@
             font-size: 14px;
         }
         
-        .claude-link {
-            display: inline-block;
-            background: white;
-            color: #f7931e;
-            padding: 12px 24px;
-            border-radius: 25px;
-            text-decoration: none;
-            font-weight: 600;
-            transition: all 0.2s ease;
-        }
-        
-        .claude-link:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
-        }
-        
         .back-button {
             display: inline-flex;
             align-items: center;
@@ -391,7 +375,7 @@
         <!-- Screen 1: Login/Register -->
         <div class="screen active" id="authScreen">
             <div class="header">
-                <h1>WellCheck</h1>
+                <h1>VYBIN</h1>
                 <p>Your daily wellness companion</p>
             </div>
             
@@ -421,6 +405,7 @@
         <div class="screen" id="checkinScreen">
             <div class="user-greeting" id="userGreeting">Welcome back!</div>
             <button class="logout-button" onclick="logout()">Logout</button>
+            <button class="logout-button" onclick="showDebugInfo()" style="margin-left: 10px;">Debug</button>
             
             <div class="header">
                 <h1>Daily Check-in</h1>
@@ -572,7 +557,7 @@
             <div class="claude-response">
                 <div class="claude-avatar">
                     <span style="font-size: 24px;">💡</span>
-                    <span>WellCheck Personalized Assistance</span>
+                    <span>VYBIN Personalized Assistance</span>
                 </div>
                 <div class="response-text" id="followupQuestion">
                     <div class="loading-indicator">
@@ -607,7 +592,7 @@
             <div id="loadingContainer" class="claude-response">
                 <div class="claude-avatar">
                     <span style="font-size: 24px;">💡</span>
-                    <span>WellCheck Personalized Assistance</span>
+                    <span>VYBIN Personalized Assistance</span>
                 </div>
                 <div class="loading-indicator">
                     <div class="spinner"></div>
@@ -628,7 +613,7 @@
         
         // Initialize app
         document.addEventListener('DOMContentLoaded', function() {
-            // App starts at login screen - no persistent storage in demo
+            console.log('🚀 VYBIN initialized');
         });
         
         // Authentication functions
@@ -647,6 +632,7 @@
                 showScreen('checkinScreen');
                 updateUserGreeting();
                 loadUserHistory();
+                console.log('✅ User logged in:', username);
             } else {
                 alert('Invalid credentials. For demo, use "demo/demo123" or any username with 6+ character password');
             }
@@ -671,15 +657,26 @@
             updateUserGreeting();
             initializeUserHistory();
             alert('Account created successfully!');
+            console.log('✅ New user registered:', username);
         }
         
         function logout() {
+            console.log('🧹 Logging out user:', currentUser?.username);
+            
+            // CRITICAL: Complete data cleanup on logout
             currentUser = null;
             ratings = {};
             userHistory = {};
+            currentCheckin = null;
+            
+            // Clear all user data from memory
+            userData = {};
+            
             showScreen('authScreen');
             document.getElementById('username').value = '';
             document.getElementById('password').value = '';
+            
+            console.log('🧹 Complete logout - all user data cleared');
         }
         
         function updateUserGreeting() {
@@ -691,10 +688,14 @@
         
         // Data persistence functions (in-memory for demo)
         function loadUserHistory() {
+            console.log('🔄 Loading user history for:', currentUser.username);
+            
             if (userData[currentUser.username]) {
                 userHistory = userData[currentUser.username];
+                console.log('📚 Found existing history:', userHistory.checkins.length, 'checkins');
             } else {
                 initializeUserHistory();
+                console.log('🆕 Initialized new user history');
             }
         }
         
@@ -702,7 +703,8 @@
             userHistory = {
                 checkins: [],
                 patterns: {},
-                lastCheckin: null
+                lastCheckin: null,
+                createdDate: new Date().toISOString()
             };
             saveUserHistory();
         }
@@ -710,12 +712,15 @@
         function saveUserHistory() {
             if (currentUser) {
                 userData[currentUser.username] = userHistory;
+                console.log('💾 Saved history for user:', currentUser.username);
             }
         }
         
         function saveCheckin(ratings, userContext = '') {
+            const today = new Date();
             const checkin = {
-                date: new Date().toISOString(),
+                date: today.toISOString(),
+                dateOnly: today.toISOString().split('T')[0], // YYYY-MM-DD for day comparison
                 ratings: { ...ratings },
                 context: userContext,
                 timestamp: Date.now()
@@ -730,6 +735,7 @@
             }
             
             saveUserHistory();
+            console.log('✅ Saved checkin for', checkin.dateOnly, '- Total checkins:', userHistory.checkins.length);
             return checkin;
         }
         
@@ -769,12 +775,12 @@
                 return;
             }
             
-            // Show followup screen and get preliminary insights
+            // Show followup screen and get preliminary insights from Claude
             showScreen('followupScreen');
             getPreliminaryInsights();
         }
         
-        // NEW: Get Claude-powered preliminary insights
+        // Get Claude-powered preliminary insights
         async function getPreliminaryInsights() {
             try {
                 console.log('🎯 Getting preliminary insights from Claude API...');
@@ -824,44 +830,21 @@
             }
         }
         
-        function generateFollowupQuestionText() {
-            const concerns = Object.entries(ratings).filter(([dim, rating]) => rating <= 2);
-            const strengths = Object.entries(ratings).filter(([dim, rating]) => rating >= 4);
-            
-            const dimensionNames = {
-                physical: 'physical health',
-                financial: 'financial situation', 
-                emotional: 'emotional well-being',
-                environmental: 'living environment',
-                social: 'relationships',
-                occupational: 'work/career',
-                intellectual: 'mental stimulation',
-                spiritual: 'spiritual well-being'
-            };
-            
-            if (concerns.length > 0) {
-                if (concerns.length === 1) {
-                    const concernName = dimensionNames[concerns[0][0]];
-                    return `What's going on with your ${concernName}? I'd like to understand your specific situation so I can offer more helpful support.`;
-                } else {
-                    const concernNames = concerns.map(([dim, rating]) => dimensionNames[dim]);
-                    const lastConcern = concernNames.pop();
-                    const concernList = concernNames.join(', ') + (concernNames.length > 0 ? ', and ' : '') + lastConcern;
-                    
-                    return `I see you're experiencing challenges with ${concernList}. What's happening in these areas of your life? Share whatever feels most important to you right now.`;
-                }
-            } else if (strengths.length > 0) {
-                return `You seem to be doing well overall! What's been helping you maintain your wellness? I'd love to learn from what's working for you.`;
-            } else {
-                return `Help me understand what's happening in your life right now. What would be most helpful for me to know about your current situation?`;
-            }
-        }
-        
         function submitWithContext() {
             const userContext = document.getElementById('userContext').value.trim();
             
             // Save the checkin with context
             currentCheckin = saveCheckin(ratings, userContext);
+            
+            // Add date info for server processing
+            currentCheckin.dateOnly = currentCheckin.dateOnly;
+            
+            console.log('📤 Submitting checkin:', {
+                date: currentCheckin.dateOnly,
+                hasContext: !!userContext,
+                contextLength: userContext.length,
+                ratingsCount: Object.keys(currentCheckin.ratings).length
+            });
             
             // Show response screen and get Claude analysis
             showScreen('responseScreen');
@@ -911,7 +894,7 @@
                 <div class="claude-response">
                     <div class="claude-avatar">
                         <span style="font-size: 24px;">💡</span>
-                        <span>WellCheck Personalized Assistance</span>
+                        <span>VYBIN Personalized Assistance</span>
                     </div>
                     <div class="response-text">${response.replace(/\n/g, '<br>')}</div>
                 </div>
@@ -938,7 +921,7 @@
                 <div class="claude-response">
                     <div class="claude-avatar">
                         <span style="font-size: 24px;">💡</span>
-                        <span>WellCheck Personalized Assistance</span>
+                        <span>VYBIN Personalized Assistance</span>
                     </div>
                     <div class="response-text">
                         I'm having trouble connecting right now, but I want you to know that completing your check-in is still valuable. 
@@ -1209,7 +1192,7 @@
                         <div class="claude-response" style="margin-top: 20px; border-left: 4px solid #5a4fcf;">
                             <div class="claude-avatar">
                                 <span style="font-size: 24px;">💡</span>
-                                <span>WellCheck Personalized Assistance</span>
+                                <span>VYBIN Personalized Assistance</span>
                             </div>
                             <div style="font-size: 14px; color: #666; margin-bottom: 10px; font-style: italic;">
                                 You asked: "${userQuestion}"
@@ -1252,12 +1235,27 @@
         
         function generateTrendsPreview(checkin) {
             const recentCheckins = userHistory.checkins.slice(-5);
-            if (recentCheckins.length < 2) {
+            console.log('📊 Generating trends for', recentCheckins.length, 'recent checkins');
+            
+            // Count unique days to differentiate daily vs multiple daily checkins
+            const uniqueDays = [...new Set(recentCheckins.map(c => c.dateOnly))];
+            const totalDays = uniqueDays.length;
+            
+            if (recentCheckins.length === 0) {
                 return `
                     <div class="trends-preview">
                         <h3>🌱 Starting Your Journey</h3>
                         <p style="font-size: 14px; color: #666; margin: 0;">
-                            Keep checking in daily to see wellness patterns emerge over time
+                            This is your first check-in! Keep checking in daily to see wellness patterns emerge over time.
+                        </p>
+                    </div>
+                `;
+            } else if (recentCheckins.length === 1) {
+                return `
+                    <div class="trends-preview">
+                        <h3>🌱 Beginning Your Journey</h3>
+                        <p style="font-size: 14px; color: #666; margin: 0;">
+                            You've completed 1 check-in. Keep going daily to see patterns emerge!
                         </p>
                     </div>
                 `;
@@ -1271,19 +1269,64 @@
                 return `<div class="chart-bar" style="height: ${height}%; background: ${color};"></div>`;
             }).join('');
             
+            const dayLabel = totalDays === 1 ? 'day' : 'days';
+            const checkinsLabel = recentCheckins.length === 1 ? 'check-in' : 'check-ins';
+            
             return `
                 <div class="trends-preview">
                     <h3>📈 Your Progress</h3>
                     <div class="mini-chart">${chartBars}</div>
                     <p style="font-size: 14px; color: #666; margin: 0;">
-                        Tracking ${recentCheckins.length} days - keep building that awareness! 
+                        ${recentCheckins.length} ${checkinsLabel} across ${totalDays} ${dayLabel} - building that awareness! 
                     </p>
                 </div>
             `;
         }
         
+        // Debug function to identify data bleeding issues
+        function showDebugInfo() {
+            const debugInfo = {
+                currentUser: currentUser,
+                allUserData: userData,
+                currentUserHistory: userHistory,
+                currentRatings: ratings,
+                currentCheckin: currentCheckin,
+                totalUsersInStorage: Object.keys(userData).length
+            };
+            
+            console.log('🔍 DEBUG INFO:', debugInfo);
+            
+            const debugDisplay = `
+                Current User: ${currentUser?.username || 'None'}
+                Total Users in Storage: ${Object.keys(userData).length}
+                Current User's Checkins: ${userHistory?.checkins?.length || 0}
+                Current Session Ratings: ${Object.keys(ratings).length}
+                
+                All Stored Users:
+                ${Object.keys(userData).map(username => 
+                    `  - ${username}: ${userData[username]?.checkins?.length || 0} checkins`
+                ).join('\n')}
+                
+                Raw Data: ${JSON.stringify(debugInfo, null, 2)}
+            `;
+            
+            if(confirm('Show debug info?\n\n' + debugDisplay + '\n\nClick OK to see raw data in console, Cancel to clear all data')) {
+                console.table(userData);
+            } else {
+                // Reset all data
+                userData = {};
+                userHistory = {};  
+                currentCheckin = null;
+                ratings = {};
+                console.log('🗑️ All application data cleared');
+                alert('All data cleared! Refresh page to start clean.');
+            }
+        }
+        
         // Screen management
         function showScreen(screenId) {
+            console.log('🎭 Switching to screen:', screenId);
+            
             document.querySelectorAll('.screen').forEach(screen => {
                 screen.classList.remove('active');
             });
@@ -1300,9 +1343,23 @@
             } else if (screenId === 'followupScreen') {
                 // Clear previous context
                 document.getElementById('userContext').value = '';
+                // Reset the followup question display
+                document.getElementById('followupQuestion').innerHTML = `
+                    <div class="loading-indicator">
+                        <div class="spinner"></div>
+                        <span>Understanding your check-in...</span>
+                    </div>
+                `;
             } else if (screenId === 'responseScreen') {
                 document.getElementById('loadingContainer').style.display = 'block';
                 document.getElementById('responseContainer').innerHTML = '';
+            } else if (screenId === 'authScreen') {
+                // CRITICAL: Clear all session data when returning to auth
+                currentUser = null;
+                ratings = {};
+                userHistory = {};
+                currentCheckin = null;
+                console.log('🧹 Cleared session data for auth screen');
             }
         }
     </script>

@@ -1,4 +1,4 @@
-// server.js - WellCheck Backend
+// server.js - VYBIN Backend
 const express = require('express');
 const cors = require('cors');
 require('dotenv').config();
@@ -11,73 +11,110 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('public')); // Serve frontend files
 
-// Location detection endpoint
+// Enhanced location detection endpoint
 app.post('/api/detect-location', async (req, res) => {
     try {
-        // Try to get user's location from IP
-        let userIP = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        // Try to get user's location from IP - improved logic
+        let userIP = req.headers['x-forwarded-for'] || 
+                    req.headers['x-real-ip'] || 
+                    req.connection.remoteAddress || 
+                    req.socket.remoteAddress ||
+                    (req.connection.socket ? req.connection.socket.remoteAddress : null);
         
         // Clean up IP address (handle potential multiple IPs in x-forwarded-for)
         if (userIP && userIP.includes(',')) {
             userIP = userIP.split(',')[0].trim();
         }
         
-        console.log('Detecting location for IP:', userIP);
+        // Remove IPv6 prefix if present
+        if (userIP && userIP.startsWith('::ffff:')) {
+            userIP = userIP.substring(7);
+        }
         
-        // For MVP, use a simple IP geolocation service
-        if (userIP && userIP !== '::1' && !userIP.startsWith('127.') && !userIP.startsWith('::ffff:127.')) {
+        console.log('🌍 VYBIN: Detecting location for IP:', userIP);
+        
+        // For MVP, use a simple IP geolocation service with fallback
+        if (userIP && userIP !== '::1' && !userIP.startsWith('127.') && !userIP.startsWith('192.168.') && !userIP.startsWith('10.')) {
             try {
-                const geoResponse = await fetch(`http://ip-api.com/json/${userIP}?fields=status,country,regionName,city,lat,lon`);
-                const geoData = await geoResponse.json();
+                // Try multiple geolocation services for better accuracy
+                let geoData = null;
                 
-                console.log('Geolocation response:', geoData);
+                // Primary service
+                try {
+                    const geoResponse = await fetch(`http://ip-api.com/json/${userIP}?fields=status,country,regionName,city,lat,lon,isp`);
+                    geoData = await geoResponse.json();
+                    console.log('📍 Primary geolocation response:', geoData);
+                } catch (primaryError) {
+                    console.log('⚠️ Primary geolocation failed, trying backup...');
+                    
+                    // Backup service
+                    const backupResponse = await fetch(`http://ipinfo.io/${userIP}/json`);
+                    const backupData = await backupResponse.json();
+                    if (backupData.city && backupData.region) {
+                        geoData = {
+                            status: 'success',
+                            city: backupData.city,
+                            regionName: backupData.region,
+                            country: backupData.country
+                        };
+                        console.log('📍 Backup geolocation response:', geoData);
+                    }
+                }
                 
-                if (geoData.status === 'success') {
+                if (geoData && (geoData.status === 'success' || geoData.city)) {
                     res.json({ 
                         success: true, 
-                        state: geoData.regionName,
+                        state: geoData.regionName || geoData.region,
                         city: geoData.city,
                         country: geoData.country,
                         latitude: geoData.lat,
                         longitude: geoData.lon,
                         detected: true,
-                        ip: userIP
+                        ip: userIP,
+                        isp: geoData.isp
                     });
                     return;
                 }
             } catch (geoError) {
-                console.error('IP geolocation failed:', geoError);
+                console.error('🚫 All geolocation services failed:', geoError.message);
             }
+        } else {
+            console.log('🏠 Local/private IP detected:', userIP);
         }
         
-        // Default fallback - but don't assume Washington anymore
-        console.log('Using location fallback');
+        // Enhanced fallback - don't assume location
+        console.log('🌐 Using enhanced location fallback');
         res.json({ 
             success: true, 
-            state: 'United States', 
-            city: 'Your Area',
+            state: 'Your State', 
+            city: 'Your City',
             country: 'United States',
             detected: false,
-            ip: userIP
+            ip: userIP,
+            note: 'Location detection unavailable for this IP'
         });
         
     } catch (error) {
-        console.error('Error detecting location:', error);
+        console.error('💥 VYBIN: Error detecting location:', error);
         res.json({ 
             success: false, 
-            state: 'United States', 
-            city: 'Your Area',
+            state: 'Your State', 
+            city: 'Your City',
             error: error.message
         });
     }
 });
 
-// NEW: Preliminary insights endpoint (called before user adds context)
+// Preliminary insights endpoint (called before user adds context)
 app.post('/api/preliminary-insights', async (req, res) => {
     try {
         const { ratings, userHistory } = req.body;
         
-        console.log('Getting preliminary insights for ratings:', ratings);
+        console.log('🎯 VYBIN: Getting preliminary insights for ratings:', ratings);
+        console.log('📚 User history received:', {
+            totalCheckins: userHistory?.checkins?.length || 0,
+            hasRecentContext: !!(userHistory?.checkins?.[userHistory.checkins.length - 1]?.context)
+        });
         
         const prompt = createPreliminaryPrompt(ratings, userHistory);
         
@@ -104,7 +141,7 @@ app.post('/api/preliminary-insights', async (req, res) => {
         }
         
         const data = await response.json();
-        console.log('Preliminary insights response received');
+        console.log('✅ VYBIN: Preliminary insights response received');
         
         res.json({ 
             success: true, 
@@ -112,7 +149,7 @@ app.post('/api/preliminary-insights', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Error getting preliminary insights:', error);
+        console.error('💥 VYBIN: Error getting preliminary insights:', error);
         res.status(500).json({ 
             success: false, 
             error: 'Failed to get preliminary insights' 
@@ -125,12 +162,12 @@ app.post('/api/continue-conversation', async (req, res) => {
     try {
         const { initialResponse, userQuestion, checkinData } = req.body;
         
-        console.log('Continue conversation request:', {
+        console.log('🤖 VYBIN: Continue conversation request:', {
             userQuestion: userQuestion,
             hasCheckinData: !!checkinData
         });
         
-        const prompt = `You are continuing a wellness conversation. Here's the context:
+        const prompt = `You are continuing a VYBIN wellness conversation. Here's the context:
 
 PREVIOUS CONVERSATION:
 Initial wellness response: "${initialResponse}"
@@ -172,7 +209,7 @@ Response:`;
         }
         
         const data = await response.json();
-        console.log('Continue conversation response received');
+        console.log('✅ VYBIN: Continue conversation response received');
         
         res.json({ 
             success: true, 
@@ -180,7 +217,7 @@ Response:`;
         });
         
     } catch (error) {
-        console.error('Error in extended conversation:', error);
+        console.error('💥 VYBIN: Error in extended conversation:', error);
         res.status(500).json({ 
             success: false, 
             error: 'Failed to continue conversation' 
@@ -193,11 +230,23 @@ app.post('/api/wellness-response', async (req, res) => {
     try {
         const { checkin, userHistory, preliminaryInsights } = req.body;
         
-        console.log('Getting wellness response for checkin:', {
+        console.log('🧠 VYBIN: Getting wellness response for checkin:', {
             hasRatings: !!checkin.ratings,
+            ratingsCount: Object.keys(checkin.ratings || {}).length,
             hasContext: !!checkin.context,
-            contextLength: checkin.context?.length || 0
+            contextLength: checkin.context?.length || 0,
+            date: checkin.dateOnly,
+            userHistoryCheckins: userHistory?.checkins?.length || 0,
+            preliminaryInsightsLength: preliminaryInsights?.length || 0
         });
+        
+        // CRITICAL: Log user history to identify data bleeding
+        if (userHistory?.checkins?.length > 0) {
+            console.log('📊 User history contexts:', userHistory.checkins.map(c => ({
+                date: c.dateOnly,
+                contextSnippet: c.context?.substring(0, 50) || 'no context'
+            })));
+        }
         
         const prompt = createWellnessPrompt(checkin, userHistory, preliminaryInsights);
         
@@ -224,7 +273,7 @@ app.post('/api/wellness-response', async (req, res) => {
         }
         
         const data = await response.json();
-        console.log('Wellness response received');
+        console.log('✅ VYBIN: Wellness response received');
         
         res.json({ 
             success: true, 
@@ -232,7 +281,7 @@ app.post('/api/wellness-response', async (req, res) => {
         });
         
     } catch (error) {
-        console.error('Error calling Claude API:', error);
+        console.error('💥 VYBIN: Error calling Claude API:', error);
         res.status(500).json({ 
             success: false, 
             error: 'Failed to get wellness response' 
@@ -245,7 +294,7 @@ app.post('/api/search-resources', async (req, res) => {
     try {
         const { concerningAreas, location, city, state, userContext, userRatings } = req.body;
         
-        console.log('Searching resources for:', {
+        console.log('🔍 VYBIN: Searching resources for:', {
             location: location,
             concerningAreas: concerningAreas,
             hasUserContext: !!userContext,
@@ -313,7 +362,7 @@ app.post('/api/search-resources', async (req, res) => {
         }
         
         // Use Claude to search and format resources with user's specific context
-        const prompt = `You are a helpful resource finder. I need you to search for and provide specific, actionable resources for someone dealing with these specific concerns.
+        const prompt = `You are a helpful resource finder for VYBIN wellness app users. I need you to search for and provide specific, actionable resources for someone dealing with these specific concerns.
 
 Location: ${locationString}
 
@@ -394,7 +443,7 @@ Keep descriptions brief and specific to their situation.`;
             ];
         }
         
-        console.log('Found resources:', resources.length);
+        console.log('✅ VYBIN: Found resources:', resources.length);
         
         res.json({ 
             success: true, 
@@ -402,7 +451,7 @@ Keep descriptions brief and specific to their situation.`;
         });
         
     } catch (error) {
-        console.error('Error searching resources:', error);
+        console.error('💥 VYBIN: Error searching resources:', error);
         
         // Fallback resources
         res.json({ 
@@ -423,7 +472,7 @@ Keep descriptions brief and specific to their situation.`;
     }
 });
 
-// NEW: Function to create preliminary prompt
+// Function to create preliminary prompt - ENHANCED VERSION
 function createPreliminaryPrompt(ratings, userHistory = {}) {
     const dimensionNames = {
         physical: 'physical health',
@@ -441,15 +490,32 @@ function createPreliminaryPrompt(ratings, userHistory = {}) {
     const strengths = ratedDimensions.filter(([dim, rating]) => rating >= 4);
     const ratedCount = ratedDimensions.length;
     
-    let prompt = `You are a supportive wellness companion. A user just completed their daily check-in, rating ${ratedCount} out of 8 wellness dimensions.
+    // Check user history to avoid assumptions
+    const recentCheckins = userHistory.checkins || [];
+    const isFirstTimeUser = recentCheckins.length === 0;
+    
+    console.log('📝 VYBIN: Creating preliminary prompt:', {
+        ratedCount,
+        concernsCount: concerns.length,
+        strengthsCount: strengths.length,
+        isFirstTimeUser,
+        totalPreviousCheckins: recentCheckins.length
+    });
+    
+    let prompt = `You are a supportive VYBIN wellness companion. A user just completed their daily check-in, rating ${ratedCount} out of 8 wellness dimensions.
 
 THEIR RATINGS:
 ${ratedDimensions.map(([dim, rating]) => `${dimensionNames[dim]}: ${rating}/5`).join('\n')}
 
+USER CONTEXT:
+${isFirstTimeUser ? 
+  'This is their FIRST time using VYBIN - you have NO previous knowledge about them.' :
+  `They have ${recentCheckins.length} previous check-ins. You may acknowledge patterns but focus on today's ratings.`}
+
 CRITICAL INSTRUCTIONS:
 - Acknowledge what you notice from their ratings in a warm, personalized way
 - Be specific about both challenges AND strengths you see
-- Do NOT make assumptions about why they rated things low - you don't know the reasons yet
+- ${isFirstTimeUser ? 'Do NOT make assumptions about why they rated things low - you know nothing about their background, work, living situation, or circumstances' : 'You may reference previous patterns, but focus on today'}
 - Simply acknowledge the ratings without assuming causes or existing conditions
 - Keep it brief (2-3 sentences max)  
 - Sound like a caring friend who's paying attention to what they told you
@@ -463,7 +529,7 @@ Response:`;
     return prompt;
 }
 
-// Main wellness prompt function - NO RECOVERY LANGUAGE
+// Main wellness prompt function - ENHANCED FOR DATA ISOLATION
 function createWellnessPrompt(checkin, userHistory = {}, preliminaryInsights = '') {
     const { ratings, context } = checkin;
     const dimensionNames = {
@@ -481,10 +547,23 @@ function createWellnessPrompt(checkin, userHistory = {}, preliminaryInsights = '
     const ratedDimensions = Object.entries(ratings);
     const concerns = ratedDimensions.filter(([dim, rating]) => rating <= 2);
     const strengths = ratedDimensions.filter(([dim, rating]) => rating >= 4);
-    const unratedDimensions = Object.keys(dimensionNames).filter(dim => !ratings[dim]);
     const recentCheckins = userHistory.checkins?.slice(-7) || [];
     
-    let prompt = `You are a wellness companion continuing a conversation. You already gave preliminary insights, now provide deeper support.
+    // CRITICAL: Check if this user has any prior checkins to avoid data bleeding
+    const isFirstTimeUser = !recentCheckins || recentCheckins.length === 0;
+    const todayCheckins = recentCheckins.filter(c => c.dateOnly === checkin.dateOnly);
+    const isFirstCheckinToday = todayCheckins.length <= 1;
+    
+    console.log('🧠 VYBIN: Creating wellness prompt:', {
+        hasContext: !!context,
+        contextLength: context?.length || 0,
+        isFirstTimeUser,
+        isFirstCheckinToday,
+        totalCheckins: recentCheckins.length,
+        todayCheckins: todayCheckins.length
+    });
+    
+    let prompt = `You are a VYBIN wellness companion continuing a conversation. You already gave preliminary insights, now provide deeper support.
 
 CONTEXT: You already acknowledged their ratings and said: "${preliminaryInsights}"
 
@@ -494,16 +573,22 @@ What they told you: "${context || 'No additional details provided'}"
 Ratings given: ${ratedDimensions.map(([dim, rating]) => `${dimensionNames[dim]}: ${rating}/5`).join(', ')}
 ${concerns.length > 0 ? `Areas needing support: ${concerns.map(([dim, rating]) => dimensionNames[dim]).join(', ')}` : ''}
 
-RESPONSE REQUIREMENTS:
+USER HISTORY CONTEXT:
+${isFirstTimeUser ? 'This is their first time using VYBIN.' : 
+  isFirstCheckinToday ? `This is their first check-in today. They have ${recentCheckins.length} total previous check-ins.` :
+  `This is check-in #${todayCheckins.length} today. They have ${recentCheckins.length} total check-ins.`}
+
+CRITICAL RESPONSE REQUIREMENTS:
 - Do NOT say "hello" or introduce yourself again
 - Do NOT repeat observations you already made in preliminary insights  
-- Respond specifically to what they shared about their situation
-- Reference their specific circumstances (snow/Door Dash, rabbi argument, weight concerns, job issues, etc.)
-- Provide practical, relevant guidance for their actual situation
+- Respond specifically to what they shared about their situation TODAY
+- ${isFirstTimeUser ? 'Do NOT reference any previous situations, work, or circumstances - you have no prior knowledge of them' : 'You may reference patterns from their previous check-ins, but focus on today'}
+- Reference their specific circumstances from what they told you today
+- Provide practical, relevant guidance for their actual current situation
 - Be conversational and supportive, not clinical or generic
 
 LENGTH: 2 paragraphs maximum
-TONE: Supportive friend who's been listening, not a first-time meeting
+TONE: Supportive friend who's been listening to today's conversation
 
 Response:`;
 
@@ -511,6 +596,7 @@ Response:`;
 }
 
 app.listen(PORT, () => {
-    console.log(`WellCheck server running on port ${PORT}`);
-    console.log(`Frontend available at http://localhost:${PORT}`);
+    console.log(`🚀 VYBIN server running on port ${PORT}`);
+    console.log(`💻 Frontend available at http://localhost:${PORT}`);
+    console.log(`🎯 Ready to help users VYBIN with their wellness!`);
 });
