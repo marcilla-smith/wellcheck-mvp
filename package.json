@@ -1,7 +1,7 @@
 {
-  "name": "wellcheck-mvp",
+  "name": "vybin-mvp",
   "version": "1.0.0",
-  "description": "WellCheck - Daily Wellness Check-in App for General Wellness and Self-Improvement",
+  "description": "VYBIN - Daily Wellness Check-in App with Voice Chat and AI-Powered Insights",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -21,11 +21,24 @@
   },
   "keywords": [
     "wellness",
-    "self-improvement",
     "mental-health",
-    "intelligent-assistance",
-    "samhsa"
+    "ai-powered",
+    "voice-chat",
+    "8-dimensions",
+    "peggy-swarbrick",
+    "samhsa",
+    "claude-ai",
+    "freemium",
+    "conversation-limits"
   ],
   "author": "Marcilla Smith",
-  "license": "MIT"
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/marcillasmith/vybin"
+  },
+  "homepage": "https://vybin.app",
+  "bugs": {
+    "url": "https://github.com/marcillasmith/vybin/issues"
+  }
 }

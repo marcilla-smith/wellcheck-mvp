@@ -42,8 +42,17 @@
         
         .header h1 {
             font-size: 28px;
-            color: #333;
             margin: 0;
+            font-weight: 700;
+            font-family: system-ui, sans-serif;
+        }
+        
+        .header h1 .v-green {
+            color: #28a745;
+        }
+        
+        .header h1 .rest-blue {
+            color: #5a4fcf;
         }
         
         .header p {
@@ -253,6 +262,67 @@
             transform: none;
         }
         
+        /* Voice Controls */
+        .voice-controls {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+        }
+        
+        .voice-btn {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 18px;
+            transition: all 0.2s ease;
+        }
+        
+        .mic-btn {
+            background: #28a745;
+            color: white;
+        }
+        
+        .mic-btn.recording {
+            background: #dc3545;
+            animation: pulse 1s infinite;
+        }
+        
+        .mic-btn:hover {
+            transform: scale(1.1);
+        }
+        
+        .speaker-btn {
+            background: #5a4fcf;
+            color: white;
+        }
+        
+        .speaker-btn.speaking {
+            background: #ff6b35;
+            animation: pulse 1s infinite;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.1); }
+            100% { transform: scale(1); }
+        }
+        
+        .voice-status {
+            flex: 1;
+            font-size: 14px;
+            color: #666;
+            margin-left: 10px;
+        }
+        
         /* Response Styles */
         .claude-response {
             background: #f0f4ff;
@@ -330,6 +400,43 @@
         .resource-desc {
             font-size: 13px;
             color: #666;
+        }
+        
+        .premium-upgrade {
+            background: linear-gradient(135deg, #ff6b35, #f7931e);
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+            text-align: center;
+            color: white;
+        }
+        
+        .premium-upgrade h3 {
+            margin: 0 0 10px 0;
+            font-size: 18px;
+        }
+        
+        .premium-upgrade p {
+            margin: 0 0 15px 0;
+            opacity: 0.9;
+            font-size: 14px;
+        }
+        
+        .upgrade-btn {
+            background: white;
+            color: #ff6b35;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.2s ease;
+        }
+        
+        .upgrade-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
         }
         
         .claude-cta {
@@ -421,6 +528,13 @@
             margin: 15px 0;
             color: #856404;
         }
+        
+        .conversation-count {
+            font-size: 12px;
+            color: #666;
+            text-align: center;
+            margin: 10px 0;
+        }
     </style>
 </head>
 <body>
@@ -428,9 +542,7 @@
         <!-- Screen 1: Login/Register -->
         <div class="screen active" id="authScreen">
             <div class="header">
-                <h1 style="font-weight: 700; font-family: system-ui, sans-serif;">
-                    <span style="color: #28a745;">V</span><span style="color: #5a4fcf;">YBIN</span>
-                </h1>
+                <h1><span class="v-green">V</span><span class="rest-blue">YBIN</span></h1>
                 <p>Your daily wellness companion</p>
             </div>
             
@@ -463,7 +575,7 @@
             <button class="logout-button" onclick="showDebugInfo()" style="margin-left: 10px;">Debug</button>
             
             <div class="header">
-                <h1>Daily Check-in</h1>
+                <h1><span class="v-green">V</span><span class="rest-blue">YBIN</span></h1>
                 <p>How are you feeling today?</p>
             </div>
             
@@ -629,6 +741,13 @@
                     </div>
                 </div>
                 
+                <!-- Voice Controls -->
+                <div class="voice-controls">
+                    <button class="voice-btn mic-btn" id="micBtn" onclick="toggleRecording()">🎤</button>
+                    <button class="voice-btn speaker-btn" id="speakerBtn" onclick="speakResponse()">🔊</button>
+                    <div class="voice-status" id="voiceStatus">Click microphone to speak your response</div>
+                </div>
+                
                 <div style="background: white; border-radius: 10px; padding: 15px; margin: 15px 0;">
                     <textarea 
                         id="userContext" 
@@ -673,6 +792,93 @@
         let userHistory = {};
         let userData = {}; // In-memory user storage
         let currentCheckin = null; // Store current check-in data
+        let conversationCount = 0; // Track conversations in current session
+        
+        // Voice functionality
+        let isRecording = false;
+        let recognition = null;
+        let synthesis = window.speechSynthesis;
+        
+        // Initialize speech recognition
+        function initSpeechRecognition() {
+            if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+                const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+                recognition = new SpeechRecognition();
+                recognition.continuous = false;
+                recognition.interimResults = false;
+                recognition.lang = 'en-US';
+                
+                recognition.onstart = function() {
+                    document.getElementById('voiceStatus').textContent = 'Listening...';
+                };
+                
+                recognition.onresult = function(event) {
+                    const transcript = event.results[0][0].transcript;
+                    document.getElementById('userContext').value = transcript;
+                    document.getElementById('voiceStatus').textContent = 'Speech captured! You can edit or submit.';
+                };
+                
+                recognition.onerror = function(event) {
+                    document.getElementById('voiceStatus').textContent = 'Speech recognition error. Try again.';
+                    stopRecording();
+                };
+                
+                recognition.onend = function() {
+                    stopRecording();
+                };
+            } else {
+                document.getElementById('voiceStatus').textContent = 'Speech recognition not supported in this browser.';
+            }
+        }
+        
+        function toggleRecording() {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                startRecording();
+            }
+        }
+        
+        function startRecording() {
+            if (recognition) {
+                isRecording = true;
+                document.getElementById('micBtn').classList.add('recording');
+                recognition.start();
+            }
+        }
+        
+        function stopRecording() {
+            isRecording = false;
+            document.getElementById('micBtn').classList.remove('recording');
+            if (recognition) {
+                recognition.stop();
+            }
+        }
+        
+        function speakResponse() {
+            const responseText = document.getElementById('followupQuestion').textContent || 
+                                document.querySelector('.claude-response .response-text')?.textContent;
+            
+            if (responseText && synthesis) {
+                // Stop any current speech
+                synthesis.cancel();
+                
+                const utterance = new SpeechSynthesisUtterance(responseText);
+                utterance.rate = 0.9;
+                utterance.pitch = 1;
+                utterance.volume = 0.8;
+                
+                utterance.onstart = function() {
+                    document.getElementById('speakerBtn').classList.add('speaking');
+                };
+                
+                utterance.onend = function() {
+                    document.getElementById('speakerBtn').classList.remove('speaking');
+                };
+                
+                synthesis.speak(utterance);
+            }
+        }
         
         // Tooltip functionality
         const dimensionDefinitions = {
@@ -734,6 +940,7 @@
         // Initialize app
         document.addEventListener('DOMContentLoaded', function() {
             console.log('🚀 VYBIN initialized');
+            initSpeechRecognition();
         });
         
         // Authentication functions
@@ -788,6 +995,7 @@
             ratings = {};
             userHistory = {};
             currentCheckin = null;
+            conversationCount = 0;
             
             // Clear all user data from memory
             userData = {};
@@ -895,6 +1103,9 @@
                 return;
             }
             
+            // Reset conversation count for new session
+            conversationCount = 0;
+            
             // Show followup screen and get preliminary insights from Claude
             showScreen('followupScreen');
             getPreliminaryInsights();
@@ -987,7 +1198,8 @@
                     body: JSON.stringify({
                         checkin: checkin,
                         userHistory: userHistory,
-                        preliminaryInsights: preliminaryInsights
+                        preliminaryInsights: preliminaryInsights,
+                        conversationCount: conversationCount
                     })
                 });
                 
@@ -1031,7 +1243,7 @@
                 detectLocationAndSearchResources(checkin);
             } else {
                 console.log('No concerning ratings, adding conversation CTA immediately');
-                addClaudeCTA();
+                addConversationCTA();
             }
         }
         
@@ -1048,7 +1260,7 @@
                         Keep tracking your wellness - every day of awareness counts in your personal growth journey. 💪
                     </div>
                 </div>
-                ${addClaudeCTA()}
+                ${addConversationCTA()}
             `;
         }
         
@@ -1081,7 +1293,7 @@
             } catch (error) {
                 console.error('💥 Error in location detection:', error);
                 // Still add conversation CTA even if location fails
-                addClaudeCTA();
+                addConversationCTA();
             }
         }
         
@@ -1228,7 +1440,7 @@
                 }
                 
                 // Always add conversation CTA at the end
-                addClaudeCTA();
+                addConversationCTA();
                 
             } catch (error) {
                 console.error('💥 Error searching contextual resources:', error);
@@ -1236,16 +1448,35 @@
                 const loading = document.getElementById('resourceLoading');
                 if (loading) loading.remove();
                 // Still add conversation CTA even if resources fail
-                addClaudeCTA();
+                addConversationCTA();
             }
         }
         
-        function addClaudeCTA() {
-            console.log('Adding in-app conversation option');
+        function addConversationCTA() {
+            console.log('Adding conversation option with limits. Count:', conversationCount);
+            
+            if (conversationCount >= 2) {
+                // Show upgrade prompt instead
+                const upgradePrompt = `
+                    <div class="premium-upgrade">
+                        <h3>🚀 Unlock Premium Features</h3>
+                        <p>You've used your free conversation limit. Upgrade to continue the conversation and unlock advanced wellness insights, unlimited discussions, and personalized tracking.</p>
+                        <button class="upgrade-btn" onclick="showUpgradeInfo()">
+                            Upgrade to VYBIN Premium →
+                        </button>
+                    </div>
+                `;
+                
+                document.getElementById('responseContainer').insertAdjacentHTML('beforeend', upgradePrompt);
+                return;
+            }
+            
+            const remaining = 2 - conversationCount;
             const conversationCTA = `
                 <div class="claude-cta">
                     <h3>💬 Continue the Conversation</h3>
                     <p>Have more questions about your wellness insights? Keep the conversation going right here.</p>
+                    <div class="conversation-count">${remaining} free conversation${remaining === 1 ? '' : 's'} remaining</div>
                     <div style="background: white; border-radius: 10px; padding: 15px; margin: 15px 0;">
                         <textarea 
                             id="continueConversationInput" 
@@ -1265,7 +1496,16 @@
             document.getElementById('responseContainer').insertAdjacentHTML('beforeend', conversationCTA);
         }
         
+        function showUpgradeInfo() {
+            alert('Premium features coming soon! This demonstrates the upgrade path for your business model.');
+        }
+        
         async function continueConversation() {
+            if (conversationCount >= 2) {
+                showUpgradeInfo();
+                return;
+            }
+            
             const userQuestion = document.getElementById('continueConversationInput').value.trim();
             
             if (!userQuestion) {
@@ -1293,7 +1533,8 @@
                     body: JSON.stringify({
                         initialResponse: originalResponse,
                         userQuestion: userQuestion,
-                        checkinData: currentCheckin
+                        checkinData: currentCheckin,
+                        conversationCount: conversationCount
                     })
                 });
                 
@@ -1307,6 +1548,8 @@
                 console.log('✅ Continue conversation response:', data);
                 
                 if (data.success) {
+                    conversationCount++;
+                    
                     // Add the continued conversation to the page
                     const conversationHtml = `
                         <div class="claude-response" style="margin-top: 20px; border-left: 4px solid #5a4fcf;">
@@ -1329,6 +1572,10 @@
                     document.getElementById('continueConversationInput').value = '';
                     button.disabled = false;
                     button.textContent = originalText;
+                    
+                    // Update the CTA with new count or show upgrade
+                    ctaElement.remove();
+                    addConversationCTA();
                     
                 } else {
                     throw new Error(data.error || 'Failed to continue conversation');
@@ -1411,6 +1658,7 @@
                 currentUserHistory: userHistory,
                 currentRatings: ratings,
                 currentCheckin: currentCheckin,
+                conversationCount: conversationCount,
                 totalUsersInStorage: Object.keys(userData).length
             };
             
@@ -1421,6 +1669,7 @@
                 Total Users in Storage: ${Object.keys(userData).length}
                 Current User's Checkins: ${userHistory?.checkins?.length || 0}
                 Current Session Ratings: ${Object.keys(ratings).length}
+                Conversation Count: ${conversationCount}
                 
                 All Stored Users:
                 ${Object.keys(userData).map(username => 
@@ -1438,6 +1687,7 @@
                 userHistory = {};  
                 currentCheckin = null;
                 ratings = {};
+                conversationCount = 0;
                 console.log('🗑️ All application data cleared');
                 alert('All data cleared! Refresh page to start clean.');
             }
@@ -1479,6 +1729,7 @@
                 ratings = {};
                 userHistory = {};
                 currentCheckin = null;
+                conversationCount = 0;
                 console.log('🧹 Cleared session data for auth screen');
             }
         }

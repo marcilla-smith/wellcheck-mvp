@@ -157,15 +157,26 @@ app.post('/api/preliminary-insights', async (req, res) => {
     }
 });
 
-// Extended conversation endpoint (keep users in-app)
+// Extended conversation endpoint (with limits for MVP)
 app.post('/api/continue-conversation', async (req, res) => {
     try {
-        const { initialResponse, userQuestion, checkinData } = req.body;
+        const { initialResponse, userQuestion, checkinData, conversationCount = 0 } = req.body;
         
         console.log('🤖 VYBIN: Continue conversation request:', {
             userQuestion: userQuestion,
-            hasCheckinData: !!checkinData
+            hasCheckinData: !!checkinData,
+            conversationCount: conversationCount
         });
+        
+        // Enforce conversation limit for MVP
+        if (conversationCount >= 2) {
+            console.log('🚫 VYBIN: Conversation limit reached');
+            return res.json({
+                success: false,
+                error: 'Conversation limit reached. Upgrade to premium for unlimited conversations.',
+                requiresUpgrade: true
+            });
+        }
         
         const prompt = `You are continuing a VYBIN wellness conversation. Here's the context:
 
@@ -175,6 +186,8 @@ User's follow-up question: "${userQuestion}"
 
 USER'S ORIGINAL CHECK-IN:
 ${JSON.stringify(checkinData, null, 2)}
+
+CONVERSATION COUNT: ${conversationCount + 1}/2 (MVP limit)
 
 Continue this conversation naturally. Do NOT restart or introduce yourself again. Respond directly to their follow-up question while referencing the context you already established.
 
@@ -213,7 +226,8 @@ Response:`;
         
         res.json({ 
             success: true, 
-            response: data.content[0].text 
+            response: data.content[0].text,
+            conversationCount: conversationCount + 1
         });
         
     } catch (error) {
@@ -225,10 +239,10 @@ Response:`;
     }
 });
 
-// Claude API endpoint - Main wellness response
+// Claude API endpoint - Main wellness response (with conversation tracking)
 app.post('/api/wellness-response', async (req, res) => {
     try {
-        const { checkin, userHistory, preliminaryInsights } = req.body;
+        const { checkin, userHistory, preliminaryInsights, conversationCount = 0 } = req.body;
         
         console.log('🧠 VYBIN: Getting wellness response for checkin:', {
             hasRatings: !!checkin.ratings,
@@ -237,7 +251,8 @@ app.post('/api/wellness-response', async (req, res) => {
             contextLength: checkin.context?.length || 0,
             date: checkin.dateOnly,
             userHistoryCheckins: userHistory?.checkins?.length || 0,
-            preliminaryInsightsLength: preliminaryInsights?.length || 0
+            preliminaryInsightsLength: preliminaryInsights?.length || 0,
+            conversationCount: conversationCount
         });
         
         // CRITICAL: Log user history to identify data bleeding
@@ -599,4 +614,5 @@ app.listen(PORT, () => {
     console.log(`🚀 VYBIN server running on port ${PORT}`);
     console.log(`💻 Frontend available at http://localhost:${PORT}`);
     console.log(`🎯 Ready to help users VYBIN with their wellness!`);
+    console.log(`📊 MVP Features: 2-conversation limit, voice chat enabled`);
 });
