@@ -542,7 +542,7 @@
         <!-- Screen 1: Login/Register -->
         <div class="screen active" id="authScreen">
             <div class="header">
-                <h1><span class="v-green">V</span><span class="rest-blue">YBIN</span></h1>
+                <h1><span class="v-green">V</span><span class="rest-blue">YBIN</span><sup style="font-size: 0.6em; color: #666;">™</sup></h1>
                 <p>Your daily wellness companion</p>
             </div>
             
@@ -575,7 +575,7 @@
             <button class="logout-button" onclick="showDebugInfo()" style="margin-left: 10px;">Debug</button>
             
             <div class="header">
-                <h1><span class="v-green">V</span><span class="rest-blue">YBIN</span></h1>
+                <h1><span class="v-green">V</span><span class="rest-blue">YBIN</span><sup style="font-size: 0.6em; color: #666;">™</sup></h1>
                 <p>How are you feeling today?</p>
             </div>
             
@@ -783,6 +783,12 @@
             </div>
             
             <div id="responseContainer"></div>
+            
+            <!-- Voice Controls for Response Screen -->
+            <div class="voice-controls" id="responseVoiceControls" style="display: none;">
+                <button class="voice-btn speaker-btn" id="mainResponseSpeaker" onclick="speakMainResponse()">🔊</button>
+                <div class="voice-status" id="mainResponseVoiceStatus">Click speaker to hear this response</div>
+            </div>
         </div>
     </div>
     
@@ -874,6 +880,31 @@
                 
                 utterance.onend = function() {
                     document.getElementById('speakerBtn').classList.remove('speaking');
+                };
+                
+                synthesis.speak(utterance);
+            }
+        }
+        
+        function speakMainResponse() {
+            const responseText = document.getElementById('mainResponseText')?.textContent || 
+                                document.querySelector('.claude-response .response-text')?.textContent;
+            
+            if (responseText && synthesis) {
+                // Stop any current speech
+                synthesis.cancel();
+                
+                const utterance = new SpeechSynthesisUtterance(responseText);
+                utterance.rate = 0.9;
+                utterance.pitch = 1;
+                utterance.volume = 0.8;
+                
+                utterance.onstart = function() {
+                    document.getElementById('mainResponseSpeaker').classList.add('speaking');
+                };
+                
+                utterance.onend = function() {
+                    document.getElementById('mainResponseSpeaker').classList.remove('speaking');
                 };
                 
                 synthesis.speak(utterance);
@@ -1221,6 +1252,9 @@
             // Hide loading
             document.getElementById('loadingContainer').style.display = 'none';
             
+            // Show voice controls
+            document.getElementById('responseVoiceControls').style.display = 'flex';
+            
             // Create response HTML
             const responseHtml = `
                 <div class="claude-response">
@@ -1228,7 +1262,7 @@
                         <span style="font-size: 24px;">💡</span>
                         <span>VYBIN Personalized Assistance</span>
                     </div>
-                    <div class="response-text">${response.replace(/\n/g, '<br>')}</div>
+                    <div class="response-text" id="mainResponseText">${response.replace(/\n/g, '<br>')}</div>
                 </div>
                 
                 ${generateTrendsPreview(checkin)}
@@ -1249,13 +1283,15 @@
         
         function displayErrorResponse() {
             document.getElementById('loadingContainer').style.display = 'none';
+            document.getElementById('responseVoiceControls').style.display = 'flex';
+            
             document.getElementById('responseContainer').innerHTML = `
                 <div class="claude-response">
                     <div class="claude-avatar">
                         <span style="font-size: 24px;">💡</span>
                         <span>VYBIN Personalized Assistance</span>
                     </div>
-                    <div class="response-text">
+                    <div class="response-text" id="mainResponseText">
                         I'm having trouble connecting right now, but I want you to know that completing your check-in is still valuable. 
                         Keep tracking your wellness - every day of awareness counts in your personal growth journey. 💪
                     </div>
@@ -1723,6 +1759,7 @@
             } else if (screenId === 'responseScreen') {
                 document.getElementById('loadingContainer').style.display = 'block';
                 document.getElementById('responseContainer').innerHTML = '';
+                document.getElementById('responseVoiceControls').style.display = 'none';
             } else if (screenId === 'authScreen') {
                 // CRITICAL: Clear all session data when returning to auth
                 currentUser = null;

@@ -530,8 +530,9 @@ ${isFirstTimeUser ?
 CRITICAL INSTRUCTIONS:
 - Acknowledge what you notice from their ratings in a warm, personalized way
 - Be specific about both challenges AND strengths you see
-- ${isFirstTimeUser ? 'Do NOT make assumptions about why they rated things low - you know nothing about their background, work, living situation, or circumstances' : 'You may reference previous patterns, but focus on today'}
-- Simply acknowledge the ratings without assuming causes or existing conditions
+- ${isFirstTimeUser ? 'CRITICAL: Do NOT make ANY assumptions about why they rated things low - you know NOTHING about their background, work, living situation, relationships, or circumstances. Only acknowledge the ratings themselves.' : 'You may reference previous patterns, but focus on today'}
+- Simply acknowledge the ratings without assuming causes, conditions, or situations
+- Do NOT infer work problems, relationship issues, or life circumstances from ratings alone
 - Keep it brief (2-3 sentences max)  
 - Sound like a caring friend who's paying attention to what they told you
 - Do NOT ask questions yet - just acknowledge what you see
@@ -597,8 +598,11 @@ CRITICAL RESPONSE REQUIREMENTS:
 - Do NOT say "hello" or introduce yourself again
 - Do NOT repeat observations you already made in preliminary insights  
 - Respond specifically to what they shared about their situation TODAY
-- ${isFirstTimeUser ? 'Do NOT reference any previous situations, work, or circumstances - you have no prior knowledge of them' : 'You may reference patterns from their previous check-ins, but focus on today'}
-- Reference their specific circumstances from what they told you today
+- ${isFirstTimeUser ? 'CRITICAL: Do NOT make ANY assumptions about their work, relationships, living situation, or circumstances. You know NOTHING about their background except what they explicitly told you today.' : 'You may reference patterns from their previous check-ins, but focus on today'}
+- ONLY reference circumstances they explicitly shared - do not infer or assume anything
+- If they didn't mention work problems, don't assume work problems exist
+- If they didn't mention relationship issues, don't assume relationship issues exist  
+- Base your response ONLY on what they actually told you
 - Provide practical, relevant guidance for their actual current situation
 - Be conversational and supportive, not clinical or generic
 
