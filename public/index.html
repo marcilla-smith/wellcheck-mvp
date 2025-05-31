@@ -771,7 +771,7 @@
                 <!-- User Input Section -->
                 <div class="voice-controls">
                     <button class="voice-btn mic-btn" id="micBtn" onclick="toggleRecording()">🎤</button>
-                    <div class="voice-status">Click microphone to speak your response</div>
+                    <div class="voice-status">Click microphone to speak (will add to existing text)</div>
                 </div>
                 
                 <div style="background: white; border-radius: 10px; padding: 15px; margin: 15px 0;">
@@ -846,8 +846,11 @@
                 
                 recognition.onresult = function(event) {
                     const transcript = event.results[0][0].transcript;
-                    document.getElementById('userContext').value = transcript;
-                    document.getElementById('voiceStatus').textContent = 'Speech captured! You can edit or submit.';
+                    const currentText = document.getElementById('userContext').value;
+                    // Append to existing text with a space if there's already content
+                    const newText = currentText ? currentText + ' ' + transcript : transcript;
+                    document.getElementById('userContext').value = newText;
+                    document.getElementById('voiceStatus').textContent = 'Speech captured! You can continue speaking or edit.';
                 };
                 
                 recognition.onerror = function(event) {
@@ -881,9 +884,12 @@
                     const transcript = event.results[0][0].transcript;
                     const inputEl = document.getElementById('continueConversationInput');
                     if (inputEl) {
-                        inputEl.value = transcript;
+                        const currentText = inputEl.value;
+                        // Append to existing text with a space if there's already content
+                        const newText = currentText ? currentText + ' ' + transcript : transcript;
+                        inputEl.value = newText;
                         const statusEl = document.getElementById('continueVoiceStatus');
-                        if (statusEl) statusEl.textContent = 'Speech captured! You can edit or submit.';
+                        if (statusEl) statusEl.textContent = 'Speech captured! You can continue speaking or edit.';
                     }
                 };
                 
@@ -1803,7 +1809,7 @@
                     <!-- Voice Input for Continue Conversation -->
                     <div class="voice-controls">
                         <button class="voice-btn mic-btn" id="continueMicBtn" onclick="toggleContinueRecording()">🎤</button>
-                        <div class="voice-status" id="continueVoiceStatus">Click microphone to speak your question</div>
+                        <div class="voice-status" id="continueVoiceStatus">Click microphone to speak (will add to existing text)</div>
                     </div>
                     
                     <div style="background: white; border-radius: 10px; padding: 15px; margin: 15px 0;">
@@ -1851,8 +1857,8 @@
             try {
                 console.log('🤖 Continuing conversation with:', userQuestion);
                 
-                // Get the original response text for context
-                const originalResponse = document.querySelector('.claude-response .response-text').textContent;
+                // Get the FULL conversation context, not just the original response
+                const fullConversationContext = gatherFullConversationContext();
                 
                 const response = await fetch('/api/continue-conversation', {
                     method: 'POST',
@@ -1860,7 +1866,7 @@
                         'Content-Type': 'application/json'
                     },
                     body: JSON.stringify({
-                        initialResponse: originalResponse,
+                        initialResponse: fullConversationContext,
                         userQuestion: userQuestion,
                         checkinData: currentCheckin,
                         conversationCount: conversationCount
@@ -1938,6 +1944,45 @@
                 button.disabled = false;
                 button.textContent = originalText;
             }
+        }
+        
+        function gatherFullConversationContext() {
+            let fullContext = '';
+            
+            // Get main wellness response
+            const mainResponse = document.getElementById('mainResponseText');
+            if (mainResponse) {
+                fullContext += 'MAIN WELLNESS RESPONSE:\n' + mainResponse.textContent + '\n\n';
+            }
+            
+            // Get any resources that were presented
+            const resourceLists = document.querySelectorAll('.resource-list');
+            if (resourceLists.length > 0) {
+                fullContext += 'RESOURCES PROVIDED:\n';
+                resourceLists.forEach(resourceList => {
+                    const resourceItems = resourceList.querySelectorAll('.resource-item');
+                    resourceItems.forEach(item => {
+                        const title = item.querySelector('.resource-title')?.textContent || '';
+                        const desc = item.querySelector('.resource-desc')?.textContent || '';
+                        fullContext += `- ${title}: ${desc}\n`;
+                    });
+                });
+                fullContext += '\n';
+            }
+            
+            // Get any previous follow-up conversations in this session
+            const followupResponses = document.querySelectorAll('[id^="continueResponseText"]');
+            if (followupResponses.length > 0) {
+                fullContext += 'PREVIOUS FOLLOW-UP CONVERSATIONS:\n';
+                followupResponses.forEach((response, index) => {
+                    const questionElement = response.parentElement.querySelector('.font-style\\:italic, [style*="font-style: italic"]');
+                    const question = questionElement ? questionElement.textContent.replace('You asked: "', '').replace('"', '') : '';
+                    fullContext += `Q${index + 1}: ${question}\nA${index + 1}: ${response.textContent}\n\n`;
+                });
+            }
+            
+            console.log('📝 Full conversation context gathered:', fullContext.length, 'characters');
+            return fullContext;
         }
         
         function generateTrendsPreview(checkin) {
